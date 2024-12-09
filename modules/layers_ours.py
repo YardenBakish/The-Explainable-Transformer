@@ -297,9 +297,7 @@ class WeightNormLinear(Linear):
     #print(self.weight)
 
     weight =  weight_g * (weight_v / torch.norm(weight_v, dim=1)[:,None])
-    print(weight)
-    print(self.weight)
-    exit(1)
+  
 
     
     #weight = weight + torch.randn_like(weight) * 0.1
