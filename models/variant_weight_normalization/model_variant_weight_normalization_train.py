@@ -72,9 +72,9 @@ class Mlp(nn.Module):
         print(f"inside MLP with isWithBias: {isWithBias} and activation {activation}")
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = weight_norm(Linear(in_features, hidden_features, bias = isWithBias), name='weight' ) 
+        self.fc1 = WeightNormLinear(in_features, hidden_features, bias = isWithBias) 
         self.act = activation
-        self.fc2 = weight_norm(Linear(hidden_features, out_features, bias = isWithBias), name='weight')
+        self.fc2 =  WeightNormLinear(hidden_features, out_features, bias = isWithBias) 
         self.drop = Dropout(drop)
 
     def forward(self, x):
@@ -114,9 +114,9 @@ class Attention(nn.Module):
         # attn = A*V
         self.matmul2 = einsum('bhij,bhjd->bhid')
 
-        self.qkv = weight_norm(Linear(dim, dim * 3, bias=qkv_bias) , name='weight') 
+        self.qkv = WeightNormLinear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = Dropout(attn_drop)
-        self.proj = weight_norm(Linear(dim, dim, bias = isWithBias), name='weight') 
+        self.proj = WeightNormLinear(dim, dim, bias = isWithBias) 
         self.proj_drop = Dropout(proj_drop)
         self.attn_activation = attn_activation
 
@@ -276,7 +276,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = num_patches
 
-        self.proj = Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = NormalizedConv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, x):
         B, C, H, W = x.shape
@@ -333,7 +333,7 @@ class VisionTransformer(nn.Module):
             self.head = Mlp(embed_dim, int(embed_dim * mlp_ratio), num_classes, 0., isWithBias, activation)
         else:
             # with a single Linear layer as head, the param count within rounding of paper
-            self.head = weight_norm(Linear(embed_dim, num_classes, bias = isWithBias), name='weight')
+            self.head =  WeightNormLinear(embed_dim, num_classes, bias = isWithBias)
         # FIXME not quite sure what the proper weight init is supposed to be,
         # normal / trunc normal w/ std == .02 similar to other Bert like transformers
         trunc_normal_(self.pos_embed, std=.02)  # embeddings same as weights?

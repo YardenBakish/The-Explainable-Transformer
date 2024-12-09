@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
+from torch.nn.utils.parametrizations import weight_norm
 
 import math
 
@@ -10,7 +11,7 @@ __all__ = ['forward_hook', 'Clone', 'Add', 'Cat', 'ReLU', 'GELU', 'Dropout', 'Ba
            'LayerNorm', 'AddEye','BatchNorm1D' ,'RMSNorm' , 'Softplus', 'UncenteredLayerNorm', 'Sigmoid', 'SigmoidAttention', 'ReluAttention',
            'Sparsemax',
            'RepBN',
-           'SiLU']
+           'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d']
 
 
 def safe_divide(a, b):
@@ -279,6 +280,57 @@ class Linear(nn.Linear, RelProp):
         return R
 
 
+
+class WeightNormLinear(Linear):
+  def __init__(self, in_features, out_features, bias=True):
+    super().__init__(in_features, out_features, bias)
+    weight_norm(self, name='weight')
+  
+  def relprop(self, R, alpha):
+    beta = alpha - 1
+        
+  
+    weight_g = self.parametrizations.weight.original0  # Weight scale
+    weight_v = self.parametrizations.weight.original1  # Weight directio
+  
+    #print(weight_v)
+    #print(self.weight)
+
+    weight =  weight_g * (weight_v / torch.norm(weight_v, dim=1)[:,None])
+    print(weight)
+    print(self.weight)
+    exit(1)
+
+    
+    #weight = weight + torch.randn_like(weight) * 0.1
+    # Clamp weights and input
+    pw = torch.clamp(self.weight, min=0)
+    nw = torch.clamp(self.weight , max=0)
+    px = torch.clamp(self.X, min=0)
+    nx = torch.clamp(self.X, max=0)
+    
+    def f(w1, w2, x1, x2):
+        Z1 = F.linear(x1, w1)
+        Z2 = F.linear(x2, w2)
+        S1 = safe_divide(R, Z1 + Z2)
+        S2 = safe_divide(R, Z1 + Z2)
+        C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
+        C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
+        return C1 + C2
+    activator_relevances = f(pw, nw, px, nx)
+    inhibitor_relevances = f(nw, pw, px, nx)
+
+    R = alpha * activator_relevances - beta * inhibitor_relevances
+
+    return R
+
+
+class NormalizedLayerNorm(LayerNorm):
+  def __init__(self, normalized_shape, eps=1e-5, elementwise_affine=True, bias=True):
+    super().__init__(normalized_shape, eps, elementwise_affine, bias)
+    weight_norm(self, name='weight')
+
+
 class Conv2d(nn.Conv2d, RelProp):
     def gradprop2(self, DY, weight):
         Z = self.forward(self.X)
@@ -329,6 +381,11 @@ class Conv2d(nn.Conv2d, RelProp):
         return R
 
 
+
+class NormalizedConv2d(Conv2d):
+  def __init__(self, in_chans, embed_dim, kernel_size=None, stride=None):
+    super().__init__(in_chans, embed_dim, kernel_size, stride)
+    weight_norm(self, name='weight')
 
 
 class RepBN(nn.Module):

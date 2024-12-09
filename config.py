@@ -41,8 +41,9 @@ MODEL_VARIANTS = {
             #Special Variants
             'variant_layer_scale':              {**DEFAULT_MODEL,},
             'variant_diff_attn':                {**DEFAULT_MODEL,},
-            'variant_weight_normalization':     {**DEFAULT_MODEL,},
+            #'variant_weight_normalization':     {**DEFAULT_MODEL,},
 
+            'variant_weight_normalization':     {**DEFAULT_MODEL, 'norm': partial(NormalizedLayerNorm, eps=1e-6), 'last_norm': NormalizedLayerNorm },
             
 
 }
@@ -78,7 +79,9 @@ DEFAULT_PARAMETERS = {
 }
 
 PRETRAINED_MODELS_URL = {
-    'deit_tiny_patch16_224': 'finetuned_models/IMNET100/basic/best_checkpoint.pth'
+    'IMNET100': 'finetuned_models/IMNET100/basic/best_checkpoint.pth',
+    'IMNET': 'finetuned_models/IMNET/basic/checkpoint_0.pth',
+
 
 }
 
@@ -129,7 +132,7 @@ def get_config(args, skip_further_testing = False, get_epochs_to_perturbate = Fa
         return
     
     if args.auto_start_train:
-        args.finetune =  PRETRAINED_MODELS_URL[args.model]
+        args.finetune =  PRETRAINED_MODELS_URL[args.data_set]
       
 
     if args.eval and args.resume =='' and args.auto_resume == False:

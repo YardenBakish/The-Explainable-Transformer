@@ -356,7 +356,8 @@ def main(args):
     )'''
     
     #FIXME: currently hardcoded, might change we additional datasets are included
-    if args.nb_classes == 100:
+    # also, to support the same training for other variants we keep this line
+    if args.nb_classes == 100 and args.variant != 'variant_weight_normalization':
         model.head = torch.nn.Linear(model.head.weight.shape[1],args.nb_classes)
 
                     
@@ -384,6 +385,23 @@ def main(args):
                         print(f" removing {key} from pretrained checkpoint")
                         del checkpoint_model[key]
               
+        #TODO: delete where there is no use
+        #TESTED AND WORKED - our way to work with weight normalizaion and loading a pretrained DEIT
+        '''if args.variant == "variant_weight_normalization":
+          for key, original_weight  in checkpoint_model.copy().items():
+            if ".weight" in key:
+              if key not in state_dict:
+                print(original_weight.shape)
+                weight_norm_value = torch.norm(original_weight, dim=1)
+                print(weight_norm_value.shape)
+                weight_direction = original_weight / weight_norm_value[:,None]
+                print(key)
+                del checkpoint_model[key]
+
+                checkpoint_model[key.replace('.weight', '.weight_v')] = weight_direction
+                checkpoint_model[key.replace('.weight', '.weight_g')] = weight_norm_value.unsqueeze(1)
+        '''
+
 
         # interpolate position embedding
         pos_embed_checkpoint = checkpoint_model['pos_embed']
