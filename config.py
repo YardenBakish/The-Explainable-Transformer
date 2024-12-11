@@ -41,9 +41,13 @@ MODEL_VARIANTS = {
             #Special Variants
             'variant_layer_scale':              {**DEFAULT_MODEL,},
             'variant_diff_attn':                {**DEFAULT_MODEL,},
-            #'variant_weight_normalization':     {**DEFAULT_MODEL,},
+            'variant_weight_normalization':     {**DEFAULT_MODEL,},
+            'variant_more_ffn':                 {**DEFAULT_MODEL,},
+            'variant_more_attn':                {**DEFAULT_MODEL,},
 
-            'variant_weight_normalization':     {**DEFAULT_MODEL, 'norm': partial(NormalizedLayerNorm, eps=1e-6), 'last_norm': NormalizedLayerNorm },
+
+
+            #'variant_weight_normalization':     {**DEFAULT_MODEL, 'norm': partial(NormalizedLayerNorm, eps=1e-6), 'last_norm': NormalizedLayerNorm },
             
 
 }

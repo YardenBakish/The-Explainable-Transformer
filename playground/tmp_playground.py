@@ -185,7 +185,7 @@ python evaluate_perturbations.py --work-env finetuned_models/basic_IMNET100/work
 python main.py --variant <variant> --resume <model.pth> --model deit_tiny_patch16_224 --seed 0 --lr 5e-6 --min-lr 1e-5 --warmup-lr 1e-5 --drop-path 0.0 --weight-decay 1e-8 --epochs 30  --num_workers 4 --batch-size 128 --warmup-epochs 1
 
 
-python main.py --variant attn_variant_light --auto-start-train --auto-save --model deit_tiny_patch16_224 --seed 0 --lr 5e-6 --min-lr 1e-5 --warmup-lr 1e-5 --drop-path 0.0 --weight-decay 1e-8 --epochs 30  --num_workers 4 --batch-size 128 --warmup-epochs 1
+python main.py --variant attn_act_sigmoid --auto-save --auto-resume --model deit_tiny_patch16_224 --seed 0 --lr 5e-6 --min-lr 1e-5 --drop-path 0.0 --weight-decay 1e-8 --epochs 120  --num_workers 4 --batch-size 128 
 
 
 
