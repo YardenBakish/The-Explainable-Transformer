@@ -18,6 +18,11 @@ from models.variant_weight_normalization.model_variant_weight_normalization_trai
 from models.variant_less_is_more.model_less_is_more_train import deit_tiny_patch16_224 as model_variant_less_is_more_train
 from models.variant_less_is_more.model_less_is_more import deit_tiny_patch16_224 as model_variant_less_is_more
 
+from models.variant_simplified_block.variant_model_simplified_block_train import deit_tiny_patch16_224 as variant_model_simplified_block_train
+
+from models.variant_registers.variant_registers_train import deit_tiny_patch16_224 as variant_model_registers_train
+from models.variant_registers.variant_registers import deit_tiny_patch16_224 as variant_model_registers
+
 
 
 
@@ -25,6 +30,38 @@ from models.variant_less_is_more.model_less_is_more import deit_tiny_patch16_224
 #TODO: add support to remaining variants instead of keeping multiple documents with redundant code
 
 def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
+
+
+    if args.variant == "variant_registers":
+        if hooks:
+            exit(1)
+        else:
+            return variant_model_registers_train(
+                isWithBias      = args.model_components["isWithBias"],
+                layer_norm      = args.model_components["norm"],
+                last_norm       = args.model_components["last_norm"],
+
+                activation      = args.model_components["activation"],
+                attn_activation = args.model_components["attn_activation"],
+                num_classes     = args.nb_classes,
+
+            )
+
+    if args.variant == "variant_simplified_blocks":
+        if hooks:
+            exit(1)
+           
+        else:
+            return variant_model_simplified_block_train(
+                isWithBias      = args.model_components["isWithBias"],
+                layer_norm      = args.model_components["norm"],
+                last_norm       = args.model_components["last_norm"],
+
+                activation      = args.model_components["activation"],
+                attn_activation = args.model_components["attn_activation"],
+                num_classes     = args.nb_classes,
+
+            )
 
     if args.variant == 'variant_more_attn' or args.variant == 'variant_more_ffn':
         less_attention = True if args.variant == 'variant_more_ffn' else False

@@ -45,6 +45,10 @@ MODEL_VARIANTS = {
             'variant_more_ffn':                 {**DEFAULT_MODEL,},
             'variant_more_attn':                {**DEFAULT_MODEL,},
 
+            'variant_simplified_blocks':        {**DEFAULT_MODEL,},
+            'variant_registers':                {**DEFAULT_MODEL,},
+
+            
 
 
             #'variant_weight_normalization':     {**DEFAULT_MODEL, 'norm': partial(NormalizedLayerNorm, eps=1e-6), 'last_norm': NormalizedLayerNorm },

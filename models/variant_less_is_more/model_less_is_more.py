@@ -444,6 +444,12 @@ class VisionTransformer(nn.Module):
         elif method == "transformer_attribution" or method == "grad":
             cams = []
             for blk in self.blocks:
+                if isinstance(blk.attn, Mlp):
+                    print("yes")
+                    continue
+              
+                
+
                 grad = blk.attn.get_attn_gradients()
                 cam = blk.attn.get_attn_cam()
                 cam = cam[0].reshape(-1, cam.shape[-1], cam.shape[-1])
@@ -451,6 +457,17 @@ class VisionTransformer(nn.Module):
                 cam = grad * cam
                 cam = cam.clamp(min=0).mean(dim=0)
                 cams.append(cam.unsqueeze(0))
+
+                if isinstance(blk.mlp, Attention):
+                  print("yes")
+                  grad = blk.mlp.get_attn_gradients()
+                  cam = blk.mlp.get_attn_cam()
+                  cam = cam[0].reshape(-1, cam.shape[-1], cam.shape[-1])
+                  grad = grad[0].reshape(-1, grad.shape[-1], grad.shape[-1])
+                  cam = grad * cam
+                  cam = cam.clamp(min=0).mean(dim=0)
+                  cams.append(cam.unsqueeze(0))
+
             rollout = compute_rollout_attention(cams, start_layer=start_layer)
             cam = rollout[:, 0, 1:]
             return cam

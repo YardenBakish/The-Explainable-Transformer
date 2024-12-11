@@ -44,18 +44,8 @@ from torchvision.datasets import ImageNet
 from torchvision import datasets, transforms
 
 
-#def normalize(tensor,
-#              mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
-#    dtype = tensor.dtype
-#    mean = torch.as_tensor(mean, dtype=dtype, device=tensor.device)
-#    std = torch.as_tensor(std, dtype=dtype, device=tensor.device)
-#    tensor.sub_(mean[None, :, None, None]).div_(std[None, :, None, None])
-#    return tensor
-
-
-
-def normalize2(tensor,
-              mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD):
+def normalize(tensor,
+              mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
     dtype = tensor.dtype
     mean = torch.as_tensor(mean, dtype=dtype, device=tensor.device)
     std = torch.as_tensor(std, dtype=dtype, device=tensor.device)
@@ -115,7 +105,7 @@ def compute_saliency_and_save(args):
             target = target.to(device)
 
             if args.normalized_pert:
-                data = imagenet_normalize(data)
+                data = normalize(data)
             else:
                 data = imagenet_normalize(data)
 

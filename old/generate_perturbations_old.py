@@ -18,9 +18,8 @@ import argparse
 #from dataset.label_index_corrector import *
 from misc.helper_functions import *
 from sklearn.metrics import auc
-from torchvision.transforms import datasets, GaussianBlur
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from torchvision import transforms
+from torchvision.transforms import GaussianBlur
+
 from old.model_ablation import deit_tiny_patch16_224 as vit_LRP
 
 #from models.model_wrapper import model_env 
@@ -37,11 +36,14 @@ DEBUG_MAX_ITER = 2
 
   
 
-imagenet_normalize = transforms.Compose([
-    #transforms.Resize(256, interpolation=3),
-    #transforms.CenterCrop(224),
-    transforms.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
-])
+def normalize(tensor,
+              mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
+    dtype  = tensor.dtype
+    mean   = torch.as_tensor(mean, dtype=dtype, device=tensor.device)
+    std    = torch.as_tensor(std, dtype=dtype, device=tensor.device)
+    tensor.sub_(mean[None, :, None, None]).div_(std[None, :, None, None])
+    return tensor
+
 
 def calc_auc(perturbation_steps,matt,op):
     means = []
@@ -104,7 +106,7 @@ def eval(args, mode = None):
         data         = data.to(device)
         vis          = vis.to(device)
         target       = target.to(device)
-        norm_data    = imagenet_normalize(data.clone())
+        norm_data    = normalize(data.clone())
 
         # Compute model accuracy
         pred               = model(norm_data)
@@ -172,7 +174,7 @@ def eval(args, mode = None):
                 np.save(f"testing/pert_vis/{target.item()}/pert_black{i}",  _data_blurred.cpu().numpy())  
 
             
-            _norm_data = imagenet_normalize(_data)
+            _norm_data = normalize(_data)
 
             out = model(_norm_data)
 
