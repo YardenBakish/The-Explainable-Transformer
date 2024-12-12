@@ -304,7 +304,7 @@ def run_perturbations(args):
        if filter_epochs(args, int(epoch), variant ) == False:
           continue
        print(f"working on epoch {epoch}")
-       pert_results_dir = 'pert_results/op_norm' if args.default_norm else 'pert_results'
+       pert_results_dir = 'pert_results/suggested_norm' if args.default_norm else 'pert_results'
        eval_pert_epoch_cmd = f"{eval_pert_cmd} --output-dir {model_dir}/{pert_results_dir}/res_{epoch}"
        if args.normalized_pert == 0:
           eval_pert_epoch_cmd+="_base"
@@ -325,7 +325,7 @@ def run_perturbations(args):
 def generate_plots(dir_path,args):
     acc_results_path = os.path.join(dir_path, 'acc_results.json')
     acc_dict = parse_acc_results(acc_results_path)
-    pert_results_dir = 'pert_results/op_norm' if args.default_norm else 'pert_results'
+    pert_results_dir = 'pert_results/suggested_norm' if args.default_norm else 'pert_results'
     
     pert_results_path = os.path.join(dir_path, pert_results_dir)
     pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args)
@@ -398,7 +398,7 @@ def analyze(args):
        subdir = f'{root_dir}/{c}'
        acc_results_path = os.path.join(subdir, 'acc_results.json')
        acc_dict = parse_acc_results(acc_results_path)
-       pert_results_dir = 'pert_results/op_norm' if args.default_norm else 'pert_results'
+       pert_results_dir = 'pert_results/suggested_norm' if args.default_norm else 'pert_results'
        pert_results_path = os.path.join(subdir, pert_results_dir)
        pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args, op)
        tmp_max_neg         = -float('inf')

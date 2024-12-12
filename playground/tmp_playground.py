@@ -1667,4 +1667,3 @@ def deit_tiny_patch16_224(pretrained=False,
     return model
 
 
-
