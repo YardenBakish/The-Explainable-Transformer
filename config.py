@@ -59,7 +59,7 @@ MODEL_VARIANTS = {
 
 #chosen randmoly
 EPOCHS_TO_PERTURBATE = {
-            'basic':  [29, 28, 26,  ]    ,       # 22,10, 14,12,16, 18  24,
+            'basic':  [29, 28, 26, 22,10, 14  ]    ,       # ,12,16, 18  24,
             'attn_act_relu':       [ 70, 52, 71, 72,73,74,75,  31,  33, 35, 45,],    # 14, 20,
             'act_softplus':       [49, 48,45,46,34, 3]   , # 3 34 ,40
             'act_softplus_norm_rms': [78,79,73,],                 #       60,59,58,50,48,46,44,40

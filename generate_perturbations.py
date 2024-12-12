@@ -18,9 +18,9 @@ import argparse
 #from dataset.label_index_corrector import *
 from misc.helper_functions import *
 from sklearn.metrics import auc
-from torchvision.transforms import datasets, GaussianBlur
+from torchvision.transforms import  GaussianBlur
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-from torchvision import transforms
+from torchvision import transforms, datasets
 from old.model_ablation import deit_tiny_patch16_224 as vit_LRP
 
 #from models.model_wrapper import model_env 
