@@ -44,23 +44,6 @@ from torchvision.datasets import ImageNet
 from torchvision import datasets, transforms
 
 
-#def normalize(tensor,
-#              mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]):
-#    dtype = tensor.dtype
-#    mean = torch.as_tensor(mean, dtype=dtype, device=tensor.device)
-#    std = torch.as_tensor(std, dtype=dtype, device=tensor.device)
-#    tensor.sub_(mean[None, :, None, None]).div_(std[None, :, None, None])
-#    return tensor
-
-
-
-def normalize2(tensor,
-              mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD):
-    dtype = tensor.dtype
-    mean = torch.as_tensor(mean, dtype=dtype, device=tensor.device)
-    std = torch.as_tensor(std, dtype=dtype, device=tensor.device)
-    tensor.sub_(mean[None, :, None, None]).div_(std[None, :, None, None])
-    return tensor
 
 
 imagenet_normalize = transforms.Compose([
@@ -113,11 +96,8 @@ def compute_saliency_and_save(args):
             data_target[-data.shape[0]:] = target.data.cpu().numpy()
 
             target = target.to(device)
-
-            if args.normalized_pert:
-                data = imagenet_normalize(data)
-            else:
-                data = imagenet_normalize(data)
+            data = imagenet_normalize(data)
+          
 
             data = data.to(device)
             data.requires_grad_()
@@ -126,6 +106,10 @@ def compute_saliency_and_save(args):
             if args.vis_class == 'target':
                 index = target
 
+
+            if args.method    == 'custom_lrp':
+                 Res = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, index=index).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+
             if args.method == 'rollout':
                 print("FIXME: make sure which model is sent out for this method")
                 exit(1)
@@ -133,21 +117,21 @@ def compute_saliency_and_save(args):
                 # Res = Res - Res.mean()
 
             elif args.method == 'lrp':
-                Res = lrp.generate_LRP(data, start_layer=1, index=index).reshape(data.shape[0], 1, 14, 14)
+                Res = lrp.generate_LRP(data, start_layer=1, cp_rule = args.cp_rule, index=index).reshape(data.shape[0], 1, 14, 14)
                 # Res = Res - Res.mean()
 
             elif args.method == 'transformer_attribution':
-                output = model_LRP(data)
+                #output = model_LRP(data)
                 #print(f"target: {target}")
                 #print(f"predicted:  {output.data.topk(5, dim=1)[1][0].tolist() }")
-                if output.data.topk(5, dim=1)[1][0].tolist()[0] == target:
-                    count_correct+=1 
-                Res = lrp.generate_LRP(data, start_layer=1, method="grad", index=index).reshape(data.shape[0], 1, 14, 14)
+                #if output.data.topk(5, dim=1)[1][0].tolist()[0] == target:
+                #    count_correct+=1 
+                Res = lrp.generate_LRP(data, start_layer=1, method="grad",  cp_rule = args.cp_rule, index=index).reshape(data.shape[0], 1, 14, 14)
                 # Res = Res - Res.mean()
 
             elif args.method == 'full_lrp':
               
-                Res = lrp.generate_LRP(data, method="full", index=index).reshape(data.shape[0], 1, 224, 224)
+                Res = lrp.generate_LRP(data, method="full",  cp_rule = args.cp_rule, index=index).reshape(data.shape[0], 1, 224, 224)
                 # Res = Res - Res.mean()
 
             elif args.method == 'lrp_last_layer':
@@ -157,7 +141,7 @@ def compute_saliency_and_save(args):
                 # Res = Res - Res.mean()
 
             elif args.method == 'attn_last_layer':
-                Res = lrp.generate_LRP(data, method="last_layer_attn", is_ablation=args.is_ablation) \
+                Res = lrp.generate_LRP(data, method="last_layer_attn",  cp_rule = args.cp_rule, is_ablation=args.is_ablation) \
                     .reshape(data.shape[0], 1, 14, 14)
 
             elif args.method == 'attn_gradcam':
@@ -204,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'lrp_last_layer',
-                                 'attn_last_layer', 'attn_gradcam'],
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                         help='')
 
     parser.add_argument('--pin-mem', action='store_true',
@@ -246,9 +230,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config.get_config(args, skip_further_testing = True)
-
-
-    size = int(args.input_size / args.eval_crop_ratio)
+    config.set_components_custom_lrp(args)
+    
+    
     
     # PATH variables
     PATH = os.path.dirname(os.path.abspath(__file__)) + '/'
@@ -314,12 +298,13 @@ if __name__ == "__main__":
     model_orig_LRP.eval()
     orig_lrp = LRP(model_orig_LRP)'''
 
-    size = int(args.input_size / args.eval_crop_ratio) 
+    #size = int(args.input_size / args.eval_crop_ratio) 
     # Dataset loader for sample images
 
     transform = transforms.Compose([
-        transforms.Resize(size, interpolation=3),
-        transforms.CenterCrop(args.input_size), 
+        transforms.Resize((224, 224)),
+        #transforms.Resize(size, interpolation=3),
+        #transforms.CenterCrop(args.input_size), 
         transforms.ToTensor(),
     ])
 

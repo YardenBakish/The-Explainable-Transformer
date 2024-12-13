@@ -293,7 +293,7 @@ if __name__ == "__main__":
                         default='grad_rollout',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'v_gradcam', 'lrp_last_layer',
                                  'lrp_second_layer', 'gradcam',
-                                 'attn_last_layer', 'attn_gradcam', 'input_grads'],
+                                 'attn_last_layer', 'attn_gradcam', 'input_grads', 'custom_lrp'],
                         help='')
     parser.add_argument('--vis-class', type=str,
                         default='top',
@@ -315,6 +315,7 @@ if __name__ == "__main__":
 
 
     config.get_config(args, skip_further_testing = True)
+    config.set_components_custom_lrp(args)
 
     torch.multiprocessing.set_start_method('spawn')
 

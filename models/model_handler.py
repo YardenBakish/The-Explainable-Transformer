@@ -30,6 +30,7 @@ from models.variant_registers.variant_registers import deit_tiny_patch16_224 as 
 #TODO: add support to remaining variants instead of keeping multiple documents with redundant code
 
 def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
+    
 
 
     if args.variant == "variant_registers":

@@ -9,6 +9,9 @@ DEFAULT_MODEL = {
     'attn_activation'      : Softmax(dim=-1) 
 }
 
+
+
+
 DEFAULT_PATHS = {
         
     'imagenet_1k_Dir'        : '/home/ai_center/ai_users/zimerman1/datasets/Imagenet/data/',
@@ -94,6 +97,16 @@ PRETRAINED_MODELS_URL = {
 }
 
 
+def set_components_custom_lrp(args):
+    if args.method == "custom_lrp":
+        args.model_components['norm'] = CustomLRPLayerNorm
+        if args.variant == "norm_rms":
+            args.model_components['norm'] = CustomLRPRMSNorm
+        #TODO: think if there is semothing wrong with doing this for relu variant
+        args.cp_rule = True
+
+    else:
+        args.cp_rule = False
 
 def SET_VARIANTS_CONFIG(args):
     if args.variant not in MODEL_VARIANTS:
@@ -120,6 +133,9 @@ def SET_PATH_CONFIG(args):
 def get_config(args, skip_further_testing = False, get_epochs_to_perturbate = False):
 
     SET_VARIANTS_CONFIG(args)
+    
+    #if args.custom_lrp:
+    #    set_components_custom_lrp(args)
     args.dirs = DEFAULT_PATHS
 
     

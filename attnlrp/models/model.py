@@ -424,6 +424,9 @@ class VisionTransformer(nn.Module):
 
 
         cam = cam[0, 1:, :]
+        #FIXME: clamping helps slightly to reduce noises but also decrease importance of important features - tradeoff
+        #cam = cam.clamp(min=0)
+
         norms = torch.norm(cam, p=2, dim=1)  # Shape: [196]
 
         heatmap = norms.reshape(14, 14).unsqueeze(0).unsqueeze(0) 

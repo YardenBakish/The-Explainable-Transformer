@@ -52,7 +52,7 @@ def parse_args():
     parser.add_argument('--method', type=str,
                         default='grad_rollout',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'lrp_last_layer',
-                                 'attn_last_layer', 'attn_gradcam'],
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                         help='')
 
     parser.add_argument('--both',  action='store_true')

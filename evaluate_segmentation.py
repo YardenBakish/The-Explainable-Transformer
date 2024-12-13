@@ -77,7 +77,7 @@ parser.add_argument('--train_dataset', type=str, default='imagenet', metavar='N'
 parser.add_argument('--method', type=str,
                     default='grad_rollout',
                     choices=[ 'rollout', 'lrp','transformer_attribution', 'full_lrp', 'lrp_last_layer',
-                              'attn_last_layer', 'attn_gradcam'],
+                              'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                     help='')
 parser.add_argument('--thr', type=float, default=0.,
                     help='threshold')
@@ -112,6 +112,7 @@ parser.add_argument('--imagenet-seg-path', type=str, required=True)
 args = parser.parse_args()
 
 config.get_config(args, skip_further_testing = True)
+config.set_components_custom_lrp(args)
 
 
 args.checkname = args.method + '_' + args.arc
@@ -150,8 +151,9 @@ test_img_trans = transforms.Compose([
 sizeX = int(args.input_size / args.eval_crop_ratio)
 
 imagenet_trans = transforms.Compose([
-        transforms.Resize(sizeX, interpolation=3),
-        transforms.CenterCrop(args.input_size), 
+        #transforms.Resize(sizeX, interpolation=3),
+        #transforms.CenterCrop(args.input_size), 
+        transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
 ])
@@ -234,25 +236,28 @@ def eval_batch(image, labels, evaluator, index):
     predictions = evaluator(image)
     
     # segmentation test for the rollout baseline
-    if args.method == 'rollout':
+    if args.method    == 'custom_lrp':
+        Res = lrp.generate_LRP(image.cuda(), method="custom_lrp", cp_rule = args.cp_rule, index=index).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+    
+    elif args.method == 'rollout':
         Res = baselines.generate_rollout(image.cuda(), start_layer=1).reshape(batch_size, 1, 14, 14)
     
     # segmentation test for the LRP baseline (this is full LRP, not partial)
     elif args.method == 'full_lrp':
-        Res = orig_lrp.generate_LRP(image.cuda(), method="full").reshape(batch_size, 1, 224, 224)
+        Res = orig_lrp.generate_LRP(image.cuda(), method="full", cp_rule = args.cp_rule).reshape(batch_size, 1, 224, 224)
     
     # segmentation test for our method
     elif args.method == 'transformer_attribution':
-        Res = lrp.generate_LRP(image.cuda(), start_layer=1, method="transformer_attribution").reshape(batch_size, 1, 14, 14)
+        Res = lrp.generate_LRP(image.cuda(), start_layer=1, method="transformer_attribution", cp_rule = args.cp_rule).reshape(batch_size, 1, 14, 14)
     
     # segmentation test for the partial LRP baseline (last attn layer)
     elif args.method == 'lrp_last_layer':
-        Res = orig_lrp.generate_LRP(image.cuda(), method="last_layer", is_ablation=args.is_ablation)\
+        Res = orig_lrp.generate_LRP(image.cuda(), method="last_layer", is_ablation=args.is_ablation, cp_rule = args.cp_rule)\
             .reshape(batch_size, 1, 14, 14)
     
     # segmentation test for the raw attention baseline (last attn layer)
     elif args.method == 'attn_last_layer':
-        Res = orig_lrp.generate_LRP(image.cuda(), method="last_layer_attn", is_ablation=args.is_ablation)\
+        Res = orig_lrp.generate_LRP(image.cuda(), method="last_layer_attn", is_ablation=args.is_ablation, cp_rule = args.cp_rule)\
             .reshape(batch_size, 1, 14, 14)
     
     # segmentation test for the GradCam baseline (last attn layer)

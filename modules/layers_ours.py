@@ -11,8 +11,17 @@ __all__ = ['forward_hook', 'Clone', 'Add', 'Cat', 'ReLU', 'GELU', 'Dropout', 'Ba
            'LayerNorm', 'AddEye','BatchNorm1D' ,'RMSNorm' , 'Softplus', 'UncenteredLayerNorm', 'Sigmoid', 'SigmoidAttention', 'ReluAttention',
            'Sparsemax',
            'RepBN',
-           'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d']
+           'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d', 'CustomLRPLayerNorm', 'CustomLRPRMSNorm']
 
+
+def _stabilize(input, epsilon=1e-6, inplace=False):
+    """
+    Stabilize the input by adding a small value to it
+    """
+    if inplace:
+        return input.add_(epsilon)
+    else:
+        return input + epsilon
 
 def safe_divide(a, b):
     den = b.clamp(min=1e-9) + b.clamp(max=1e-9)
@@ -99,7 +108,7 @@ class RMSNorm(nn.RMSNorm, RelProp):
 class Sigmoid(nn.Sigmoid, RelProp):
     pass
 
-class SigmoidAttention(nn.Module):
+class SigmoidAttention(RelProp):
     def __init__(self, n= 197):
         super(SigmoidAttention, self).__init__()
         self.b = -math.log(n)
@@ -233,6 +242,55 @@ class Cat(RelProp):
             outputs.append(x * c)
 
         return outputs
+
+
+
+class CustomLRPLayerNorm(nn.LayerNorm, RelProp):
+    def forward(self, x):
+        with torch.enable_grad():
+
+            mean = x.mean(dim=-1, keepdim=True)
+            var = ((x - mean) ** 2).mean(dim=-1, keepdim=True)
+            std = (var + self.eps).sqrt()
+            y = (x - mean) / std.detach() # detach std operation will remove it from computational graph i.e. identity rule on x/std
+            if self.weight is not None:
+                y *= self.weight
+            if self.bias is not None:
+                y += self.bias
+
+            self.output11 = y
+       
+        return y
+
+    def relprop(self, R, alpha):
+        Z = self.forward(self.X)
+        relevance_norm = R[0] / _stabilize(Z, self.eps, False)
+        grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
+        return grads*self.X
+
+
+class CustomLRPRMSNorm(nn.RMSNorm, RelProp):
+    def forward(self, x):
+        with torch.enable_grad():
+            
+            var = (x  ** 2).mean(dim=-1, keepdim=True)
+            std = (var + self.eps).sqrt()
+            y = (x ) / std.detach() # detach std operation will remove it from computational graph i.e. identity rule on x/std
+           
+            if self.bias is not None:
+                y += self.bias
+            self.output11 = y
+        return y
+
+    def relprop(self, R, alpha):
+        Z = self.forward(self.X)
+        relevance_norm = R[0] / _stabilize(Z, self.eps, False)
+        grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
+        return grads*self.X
+
+
+
+
 
 
 class Sequential(nn.Sequential):

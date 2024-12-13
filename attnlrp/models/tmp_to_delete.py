@@ -80,7 +80,7 @@ class RelPropSimple(RelProp):
 
 
 
-class LayerNorm(nn.LayerNorm, RelProp):
+class CustomLRPLayerNorm(nn.LayerNorm, RelProp):
     def forward(self, x):
         with torch.enable_grad():
 
@@ -95,22 +95,12 @@ class LayerNorm(nn.LayerNorm, RelProp):
 
             self.output11 = y
        
-            
-        print(y)
         return y
 
     def relprop(self, R, alpha):
         Z = self.forward(self.X)
-
         relevance_norm = R[0] / _stabilize(Z, self.eps, False)
-        
-       
-        
         grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
-        print(grads)
-        
-        print(self.X)
-
         return grads*self.X
 
 

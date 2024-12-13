@@ -12,8 +12,12 @@ import matplotlib.pyplot as plt
 import os
 import config
 
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+
+
 import cv2
-normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+normalize = transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -54,7 +58,7 @@ def generate_visualization(original_image, class_index=None):
 
 
 def generate_visualization_LRP(original_image, class_index=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="full", index=class_index).detach()
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="full", cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(224, 224).cuda().data.cpu().numpy()
     transformer_attribution = (transformer_attribution - transformer_attribution.min()) / (transformer_attribution.max() - transformer_attribution.min())
     image_transformer_attribution = original_image.permute(1, 2, 0).data.cpu().numpy()
@@ -66,6 +70,24 @@ def generate_visualization_LRP(original_image, class_index=None):
     vis = cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)
     return vis
 
+
+def generate_visualization_custom_LRP(original_image, class_index=None):
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="custom_lrp", cp_rule=args.cp_rule, index=class_index)
+    transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
+    transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
+    transformer_attribution = transformer_attribution.squeeze().detach().cpu().numpy()
+    transformer_attribution = (transformer_attribution - transformer_attribution.min()) / (transformer_attribution.max() - transformer_attribution.min())
+
+    #transformer_attribution = transformer_attribution.reshape(224, 224).cuda().data.cpu().numpy()
+    #transformer_attribution = (transformer_attribution - transformer_attribution.min()) / (transformer_attribution.max() - transformer_attribution.min())
+    image_transformer_attribution = original_image.permute(1, 2, 0).data.cpu().numpy()
+    image_transformer_attribution = (image_transformer_attribution - image_transformer_attribution.min()) / (image_transformer_attribution.max() - image_transformer_attribution.min())
+    #print(transformer_attribution)
+   
+    vis = show_cam_on_image(image_transformer_attribution, transformer_attribution)
+    vis =  np.uint8(255 * vis)
+    vis = cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)
+    return vis
 
 def print_top_classes(predictions, **kwargs):    
     # Print Top-5 predictions
@@ -107,13 +129,14 @@ if __name__ == "__main__":
                         help='') #243 - dog , 282 - cat
   parser.add_argument('--method', type=str,
                         default='transformer_attribution',
-                        choices=['transformer_attribution', 'full_lrp'],
+                        choices=['transformer_attribution', 'full_lrp', 'custom_lrp'],
                         help='')
       
   
   
   args = parser.parse_args()
   config.get_config(args, skip_further_testing = True, get_epochs_to_perturbate = True)
+  config.set_components_custom_lrp(args)
 
   image = Image.open(args.sample_path)
   image_transformed = transform(image)
@@ -149,6 +172,9 @@ if __name__ == "__main__":
   if args.method == "transformer_attribution":
     vis = generate_visualization(image_transformed, args.class_index)
     method_name = "Att"
+  elif args.method == "custom_lrp":
+    vis = generate_visualization_custom_LRP(image_transformed, args.class_index)
+    method_name = "custom_lrp"
   else:
     vis = generate_visualization_LRP(image_transformed, args.class_index)
     method_name = "lrp"

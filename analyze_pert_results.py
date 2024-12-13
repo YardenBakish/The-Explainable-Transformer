@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'lrp_last_layer',
-                                 'attn_last_layer', 'attn_gradcam'],
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                         help='')
 
     parser.add_argument('--both',  action='store_true')
@@ -181,7 +181,7 @@ def gen_latex_table(global_top_mapper,args):
 def parse_pert_results(pert_results_path, acc_keys, args, op):
     pos_values = {}
     neg_values = {}
-    pos_lists = {}    # New dictionary for transformer_attribution_pos lists
+    pos_lists = {}    
     neg_lists = {} 
     
     for res_dir in os.listdir(pert_results_path):
@@ -199,11 +199,11 @@ def parse_pert_results(pert_results_path, acc_keys, args, op):
             pert_results_file = os.path.join(res_path, 'pert_results.json')
             with open(pert_results_file, 'r') as f:
                 pert_data = json.load(f)
-                pos_values[res_key] = pert_data.get(f'transformer_attribution_pos_auc_{op}', 0)
-                neg_values[res_key] = pert_data.get(f'transformer_attribution_neg_auc_{op}', 0)
+                pos_values[res_key] = pert_data.get(f'{args.method}_pos_auc_{op}', 0)
+                neg_values[res_key] = pert_data.get(f'{args.method}_neg_auc_{op}', 0)
 
-                pos_lists[res_key] = pert_data.get(f'transformer_attribution_pos_{op}', [])
-                neg_lists[res_key] = pert_data.get(f'transformer_attribution_neg_{op}', [])
+                pos_lists[res_key] = pert_data.get(f'{args.method}_pos_{op}', [])
+                neg_lists[res_key] = pert_data.get(f'{args.method}_neg_{op}', [])
     
     return pos_values, neg_values, pos_lists, neg_lists
 
