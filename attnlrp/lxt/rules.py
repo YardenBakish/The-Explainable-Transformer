@@ -1,7 +1,7 @@
 import torch
 from torch.autograd import Function
 import torch.nn as nn
-from lxt.functional import _stabilize, conservation_check_wrap
+from attnlrp.lxt.functional import _stabilize, conservation_check_wrap
 from torch.func import jvp, vjp
 import torch.fx
 
@@ -146,6 +146,11 @@ class EpsilonRule(WrapModule):
     def forward(self, *inputs):
 
         return epsilon_lrp_fn.apply(self.module, self.epsilon, *inputs)
+   
+    def relprop(self, R, alpha):
+      epsilon_lrp_fn.backward(R, alpha)
+
+    
 
 @torch.fx.wrap
 def epsilon_lrp(fn, epsilon, *inputs):

@@ -6,14 +6,26 @@ Hacked together by / Copyright 2020 Ross Wightman
 import torch
 import torch.nn as nn
 from einops import rearrange
-from layers_ours_attnlrp import *
+from modules.layers_ours import *
 from baselines.ViT.weight_init import trunc_normal_
 from baselines.ViT.layer_helpers import to_2tuple
+from functools import partial
+import inspect
+import matplotlib.pyplot as plt
+import numpy as np
 
-from lxt.core import Composite
-import lxt.functional as lf
-import lxt.modules as lm
-import lxt.rules as rules
+def safe_call(func, **kwargs):
+    # Get the function's signature
+    sig = inspect.signature(func)
+    
+    # Filter kwargs to only include parameters the function accepts
+    filtered_kwargs = {
+        k: v for k, v in kwargs.items() 
+        if k in sig.parameters
+    }
+    
+    # Call the function with only its compatible parameters
+    return func(**filtered_kwargs)
 
 
 def _cfg(url='', **kwargs):
@@ -54,13 +66,14 @@ def compute_rollout_attention(all_layer_matrices, start_layer=0):
     return joint_attention
 
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.):
+    def __init__(self, in_features, hidden_features=None, out_features=None, drop=0., isWithBias=True, activation = GELU):
         super().__init__()
+        print(f"inside MLP with isWithBias: {isWithBias} and activation {activation}")
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 =  rules.EpsilonRule(nn.Linear) 
-        self.act = GELU()
-        self.fc2 = Linear(hidden_features, out_features)
+        self.fc1 = Linear(in_features, hidden_features, bias = isWithBias)
+        self.act = activation
+        self.fc2 = Linear(hidden_features, out_features, bias = isWithBias)
         self.drop = Dropout(drop)
 
     def forward(self, x):
@@ -80,12 +93,20 @@ class Mlp(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False,attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, num_heads=8, qkv_bias=False,attn_drop=0., proj_drop=0., 
+       
+                attn_activation = Softmax(dim=-1), 
+                isWithBias      = True):
+        
         super().__init__()
+
+        print(f"inside attention with activation : {attn_activation} | bias: {isWithBias} ")
         self.num_heads = num_heads
+
         head_dim = dim // num_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = head_dim ** -0.5
+   
 
         # A = Q*K^T
         self.matmul1 = einsum('bhid,bhjd->bhij')
@@ -93,10 +114,22 @@ class Attention(nn.Module):
         self.matmul2 = einsum('bhij,bhjd->bhid')
 
         self.qkv = Linear(dim, dim * 3, bias=qkv_bias)
+      
+        v_bias   = self.qkv.bias[dim*2:dim*3]
+       
+    
+        v_weight = self.qkv.weight[dim*2:dim*3].view(dim, dim)
+        
+        self.v_proj = Linear(dim, dim, bias=qkv_bias)
+
+        self.v_proj.weight.data = v_weight
+        self.v_proj.bias.data = v_bias
+
+
         self.attn_drop = Dropout(attn_drop)
-        self.proj = Linear(dim, dim)
+        self.proj = Linear(dim, dim, bias = isWithBias)
         self.proj_drop = Dropout(proj_drop)
-        self.softmax = Softmax(dim=-1)
+        self.attn_activation = attn_activation
 
         self.attn_cam = None
         self.attn = None
@@ -137,13 +170,20 @@ class Attention(nn.Module):
     def forward(self, x):
         b, n, _, h = *x.shape, self.num_heads
         qkv = self.qkv(x)
-        q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=h)
 
+        tmp = self.v_proj(x)
+
+        #print(tmp)
+        #print(qkv[:,:,384:,])
+
+        #print(tmp == qkv[:,:,384:,])
+        #exit(1)
+        q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=h)
         self.save_v(v)
 
         dots = self.matmul1([q, k]) * self.scale
-
-        attn = self.softmax(dots)
+       
+        attn = self.attn_activation(dots)
         attn = self.attn_drop(attn)
 
         self.save_attn(attn)
@@ -170,7 +210,8 @@ class Attention(nn.Module):
         self.save_attn_cam(cam1)
 
         cam1 = self.attn_drop.relprop(cam1, **kwargs)
-        cam1 = self.softmax.relprop(cam1, **kwargs)
+      
+        cam1 = self.attn_activation.relprop(cam1, **kwargs)
 
         # A = Q*K^T
         (cam_q, cam_k) = self.matmul1.relprop(cam1, **kwargs)
@@ -178,41 +219,68 @@ class Attention(nn.Module):
         cam_k /= 2
 
         cam_qkv = rearrange([cam_q, cam_k, cam_v], 'qkv b h n d -> b n (qkv h d)', qkv=3, h=self.num_heads)
-
-        return self.qkv.relprop(cam_qkv, **kwargs)
+        
+        proj_vXXX = cam_qkv[:,:,384:]
+       
+        #print(self.qkv.relprop(cam_qkv, **kwargs).shape)
+        return self.v_proj.relprop(proj_vXXX, **kwargs) 
+        #return self.qkv.relprop(cam_qkv, **kwargs)
 
 
 class Block(nn.Module):
 
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.):
+    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,   
+                isWithBias = True,
+                layer_norm = partial(LayerNorm, eps=1e-6),
+                activation = GELU,
+                attn_activation = Softmax(dim=-1) ):
         super().__init__()
-        self.norm1 = LayerNorm(dim, eps=1e-6)
+        print(f"Inside block with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
+
+        self.norm1 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
         self.attn = Attention(
-            dim, num_heads=num_heads, qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
-        self.norm2 = LayerNorm(dim, eps=1e-6)
+            dim, num_heads  = num_heads, 
+            qkv_bias        = qkv_bias, 
+            attn_drop       = attn_drop, 
+            proj_drop       = drop, 
+            attn_activation = attn_activation,
+            isWithBias      = isWithBias,
+           )
+        
+        self.norm2 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, drop=drop)
+        
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, 
+                       drop=drop, 
+                       isWithBias = isWithBias, 
+                       activation = activation)
 
         self.add1 = Add()
         self.add2 = Add()
         self.clone1 = Clone()
         self.clone2 = Clone()
 
+    
+
     def forward(self, x):
         x1, x2 = self.clone1(x, 2)
+      
         x = self.add1([x1, self.attn(self.norm1(x2))])
         x1, x2 = self.clone2(x, 2)
+      
         x = self.add2([x1, self.mlp(self.norm2(x2))])
         return x
 
     def relprop(self, cam, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
         cam2 = self.mlp.relprop(cam2, **kwargs)
+       
         cam2 = self.norm2.relprop(cam2, **kwargs)
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
         cam2 = self.attn.relprop(cam2, **kwargs)
+      
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
         return cam
@@ -251,30 +319,43 @@ class VisionTransformer(nn.Module):
     """ Vision Transformer with support for patch or hybrid CNN input stage
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
-                 num_heads=12, mlp_ratio=4., qkv_bias=False, mlp_head=False, drop_rate=0., attn_drop_rate=0.):
+                 num_heads=12, mlp_ratio=4., qkv_bias=True, mlp_head=False, drop_rate=0., attn_drop_rate=0., 
+                isWithBias = True,
+                layer_norm = partial(LayerNorm, eps=1e-6),
+                activation = GELU,
+                attn_activation = Softmax(dim=-1),
+                last_norm       = LayerNorm,):
+        
         super().__init__()
+        print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
+
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
         self.patch_embed = PatchEmbed(
                 img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
+        self.isWithBias = isWithBias
 
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-
         self.blocks = nn.ModuleList([
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
-                drop=drop_rate, attn_drop=attn_drop_rate)
+                drop=drop_rate, attn_drop=attn_drop_rate,         
+           
+                isWithBias      = isWithBias, 
+                layer_norm      = layer_norm,
+                activation      = activation,
+                attn_activation = attn_activation,)
             for i in range(depth)])
 
-        self.norm = LayerNorm(embed_dim)
+        self.norm = safe_call(last_norm, normalized_shape= embed_dim, bias = isWithBias ) 
         if mlp_head:
             # paper diagram suggests 'MLP head', but results in 4M extra parameters vs paper
-            self.head = Mlp(embed_dim, int(embed_dim * mlp_ratio), num_classes)
+            self.head = Mlp(embed_dim, int(embed_dim * mlp_ratio), num_classes, 0., isWithBias, activation)
         else:
             # with a single Linear layer as head, the param count within rounding of paper
-            self.head = Linear(embed_dim, num_classes)
+            self.head = Linear(embed_dim, num_classes, bias = isWithBias)
 
         # FIXME not quite sure what the proper weight init is supposed to be,
         # normal / trunc normal w/ std == .02 similar to other Bert like transformers
@@ -297,10 +378,11 @@ class VisionTransformer(nn.Module):
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
+            if isinstance(m, nn.Linear) and m.bias is not None and self.isWithBias != False:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
+            if self.isWithBias != False:
+                nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
     @property
@@ -319,7 +401,7 @@ class VisionTransformer(nn.Module):
 
         for blk in self.blocks:
             x = blk(x)
-
+     
         x = self.norm(x)
         x = self.pool(x, dim=1, indices=torch.tensor(0, device=x.device))
         x = x.squeeze(1)
@@ -332,6 +414,7 @@ class VisionTransformer(nn.Module):
         cam = self.head.relprop(cam, **kwargs)
         cam = cam.unsqueeze(1)
         cam = self.pool.relprop(cam, **kwargs)
+     
         cam = self.norm.relprop(cam, **kwargs)
         for blk in reversed(self.blocks):
             cam = blk.relprop(cam, **kwargs)
@@ -339,12 +422,33 @@ class VisionTransformer(nn.Module):
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
 
+
+        cam = cam[0, 1:, :]
+        norms = torch.norm(cam, p=2, dim=1)  # Shape: [196]
+
+        heatmap = norms.reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+        heatmap_upscaled = torch.nn.functional.interpolate(heatmap, scale_factor=16, mode='bilinear', align_corners=False)
+        heatmap_upscaled = heatmap_upscaled.squeeze().detach().cpu().numpy()
+        heatmap_upscaled = (heatmap_upscaled - heatmap_upscaled.min()) / (heatmap_upscaled.max() - heatmap_upscaled.min())
+        return heatmap_upscaled
+        plt.imshow(heatmap_upscaled , cmap='coolwarm', interpolation='nearest')
+        plt.colorbar()
+        plt.axis('off')  # Hide axes
+        plt.savefig('heatmap.png', bbox_inches='tight', pad_inches=0)
+        #plt.show()
+        #[1,197,192]
         if method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
+            print(cam.shape)
             cam = cam[:, 1:]
+            print(cam.shape)
             cam = self.patch_embed.relprop(cam, **kwargs)
+            print(cam.shape)
             # sum on channels
+            print(cam.shape) #[1,3,244,244]
             cam = cam.sum(dim=1)
+            cam = cam.clamp(min=0)
+
             return cam
 
         elif method == "rollout":
@@ -363,6 +467,7 @@ class VisionTransformer(nn.Module):
             cams = []
             for blk in self.blocks:
                 grad = blk.attn.get_attn_gradients()
+                print(grad == None)
                 cam = blk.attn.get_attn_cam()
                 cam = cam[0].reshape(-1, cam.shape[-1], cam.shape[-1])
                 grad = grad[0].reshape(-1, grad.shape[-1], grad.shape[-1])
@@ -370,7 +475,10 @@ class VisionTransformer(nn.Module):
                 cam = cam.clamp(min=0).mean(dim=0)
                 cams.append(cam.unsqueeze(0))
             rollout = compute_rollout_attention(cams, start_layer=start_layer)
+            print(rollout.shape) #
             cam = rollout[:, 0, 1:]
+            print(cam.shape)
+           
             return cam
             
         elif method == "last_layer":
@@ -423,10 +531,26 @@ def deit_base_patch16_224(pretrained=False, **kwargs):
 
 
 
-def deit_tiny_patch16_224(pretrained=False, **kwargs):
+def deit_tiny_patch16_224(pretrained=False, 
+                          isWithBias = True,
+                          qkv_bias   = True,
+                          layer_norm = partial(LayerNorm, eps=1e-6),
+                          activation = GELU,
+                          attn_activation = Softmax(dim=-1) ,
+                          last_norm       = LayerNorm,
+                          **kwargs):
+
+    print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
     model = VisionTransformer(
-        patch_size=16, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, qkv_bias=True,
+        patch_size=16, embed_dim=192, depth=12, num_heads=3, mlp_ratio=4, 
+        qkv_bias        = isWithBias, 
+        isWithBias      = isWithBias, 
+        layer_norm      = layer_norm,
+        activation      = activation,
+        attn_activation = attn_activation,
+        last_norm       = last_norm,
         **kwargs)
+    
     model.default_cfg = _cfg()
     if pretrained:
         checkpoint = torch.hub.load_state_dict_from_url(
@@ -435,3 +559,6 @@ def deit_tiny_patch16_224(pretrained=False, **kwargs):
         )
         model.load_state_dict(checkpoint["model"])
     return model
+
+
+

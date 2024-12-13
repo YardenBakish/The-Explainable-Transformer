@@ -1,7 +1,7 @@
 import torch.nn as nn
-from lxt.rules import WrapModule
-from lxt.modules import INIT_MODULE_MAPPING
-from lxt.check import WHITELIST, BLACKLIST, SYMBOLS
+from attnlrp.lxt.rules import WrapModule
+from attnlrp.lxt.modules import INIT_MODULE_MAPPING
+from attnlrp.lxt.check import WHITELIST, BLACKLIST, SYMBOLS
 from transformers.utils.fx import HFTracer, get_concrete_args
 from torch.fx import GraphModule
 from warnings import warn

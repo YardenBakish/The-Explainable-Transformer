@@ -14,6 +14,15 @@ __all__ = ['forward_hook', 'Clone', 'Add', 'Cat', 'ReLU', 'GELU', 'Dropout', 'Ba
            'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d']
 
 
+def _stabilize(input, epsilon=1e-6, inplace=False):
+    """
+    Stabilize the input by adding a small value to it
+    """
+    if inplace:
+        return input.add_(epsilon)
+    else:
+        return input + epsilon
+
 def safe_divide(a, b):
     den = b.clamp(min=1e-9) + b.clamp(max=1e-9)
     den = den + den.eq(0).type(den.type()) * 1e-9
@@ -66,6 +75,48 @@ class RelPropSimple(RelProp):
             outputs = self.X * (C[0])
         return outputs
 
+
+
+
+
+
+class LayerNorm(nn.LayerNorm, RelProp):
+    def forward(self, x):
+        with torch.enable_grad():
+
+            mean = x.mean(dim=-1, keepdim=True)
+            var = ((x - mean) ** 2).mean(dim=-1, keepdim=True)
+            std = (var + self.eps).sqrt()
+            y = (x - mean) / std.detach() # detach std operation will remove it from computational graph i.e. identity rule on x/std
+            if self.weight is not None:
+                y *= self.weight
+            if self.bias is not None:
+                y += self.bias
+
+            self.output11 = y
+       
+            
+        print(y)
+        return y
+
+    def relprop(self, R, alpha):
+        Z = self.forward(self.X)
+
+        relevance_norm = R[0] / _stabilize(Z, self.eps, False)
+        
+       
+        
+        grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
+        print(grads)
+        
+        print(self.X)
+
+        return grads*self.X
+
+
+
+
+
 class AddEye(RelPropSimple):
     # input of shape B, C, seq_len, seq_len
     def forward(self, input):
@@ -85,9 +136,6 @@ class Softplus(nn.Softplus, RelProp):
     pass
 
 class Softmax(nn.Softmax, RelProp):
-    pass
-
-class LayerNorm(nn.LayerNorm, RelProp):
     pass
 
 
@@ -133,8 +181,7 @@ class Dropout(nn.Dropout, RelProp):
 class MaxPool2d(nn.MaxPool2d, RelPropSimple):
     pass
 
-class LayerNorm(nn.LayerNorm, RelProp):
-    pass
+
 
 class AdaptiveAvgPool2d(nn.AdaptiveAvgPool2d, RelPropSimple):
     pass
@@ -256,6 +303,15 @@ class BatchNorm2d(nn.BatchNorm2d, RelProp):
 
 class Linear(nn.Linear, RelProp):
     def relprop(self, R, alpha):
+        '''inputs, outputs = self.X, self.Y 
+        relevance_norm = R[0] / _stabilize(outputs, 1e-8, inplace=False)
+
+        # computes vector-jacobian product
+        Z = F.linear(inputs, self.weight)
+        grads = torch.autograd.grad(Z, inputs, relevance_norm)[0]
+        return self.X * grads'''
+        # return relevance at requires_grad indices else None
+        
         beta = alpha - 1
         pw = torch.clamp(self.weight, min=0)
         nw = torch.clamp(self.weight, max=0)
