@@ -99,9 +99,14 @@ PRETRAINED_MODELS_URL = {
 
 def set_components_custom_lrp(args):
     if args.method == "custom_lrp":
-        args.model_components['norm'] = CustomLRPLayerNorm
+        print(f"inside config with custom_lrp")
+        args.model_components['norm'] = partial(CustomLRPLayerNorm, eps=1e-6) 
+        args.model_components['last_norm'] = CustomLRPLayerNorm
+
         if args.variant == "norm_rms":
-            args.model_components['norm'] = CustomLRPRMSNorm
+            args.model_components['norm'] = partial(CustomLRPRMSNorm, eps=1e-6)  
+            args.model_components['last_norm'] = CustomLRPRMSNorm
+
         #TODO: think if there is semothing wrong with doing this for relu variant
         args.cp_rule = True
 

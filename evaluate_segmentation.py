@@ -165,7 +165,7 @@ test_lbl_trans = transforms.Compose([
 ])
 
 ds = Imagenet_Segmentation(args.imagenet_seg_path,
-                           transform=test_img_trans, target_transform=test_lbl_trans)
+                           transform=imagenet_trans, target_transform=test_lbl_trans)
 dl = DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=1, drop_last=False)
 
 # Model

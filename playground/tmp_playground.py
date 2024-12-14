@@ -101,7 +101,6 @@ python analyze_pert_results.py --variant norm_bias_ablation --mode pertubations 
 
 
 #visualize
-python visualize_heatmap.py --custom-trained-model finetuned_models/rmsnorm/checkpoint_13.pth --variant rmsnorm --method transformer_attribution --sample-path val/n01877812/ILSVRC2012_val_00014040.JPEG
 
 ###########################################################################################
 ###########################################################################################
@@ -129,6 +128,31 @@ val/n01514859/ILSVRC2012_val_00032162.JPEG
 val/n01440764/ILSVRC2012_val_00046252.JPEG
 val/n01985128/ILSVRC2012_val_00032174.JPEG
 finetuned_models/relu/checkpoint_29.pth
+
+
+
+
+
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/attn_act_relu/checkpoint_75.pth --variant attn_act_relu --method transformer_attribution --sample-path val/n01614925/ILSVRC2012_val_00006571.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/attn_act_relu/checkpoint_75.pth --variant attn_act_relu --method transformer_attribution --sample-path val/n01877812/ILSVRC2012_val_00014040.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/attn_act_relu/checkpoint_75.pth --variant attn_act_relu --method transformer_attribution --sample-path val/n02006656/ILSVRC2012_val_00028586.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/attn_act_relu/checkpoint_75.pth --variant attn_act_relu --method transformer_attribution --sample-path val/n01514859/ILSVRC2012_val_00032162.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/attn_act_relu/checkpoint_75.pth --variant attn_act_relu --method transformer_attribution --sample-path val/n01985128/ILSVRC2012_val_00032174.JPEG
+
+
+
+
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/basic/best_checkpoint.pth --method transformer_attribution --sample-path val/n01614925/ILSVRC2012_val_00006571.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/basic/best_checkpoint.pth --method transformer_attribution --sample-path val/n01877812/ILSVRC2012_val_00014040.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/basic/best_checkpoint.pth --method transformer_attribution --sample-path val/n02006656/ILSVRC2012_val_00028586.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/basic/best_checkpoint.pth --method custom_lrp --sample-path val/n01514859/ILSVRC2012_val_00032162.JPEG
+python visualize_heatmap.py --custom-trained-model finetuned_models/IMNET100/basic/best_checkpoint.pth --method transformer_attribution --sample-path val/n01985128/ILSVRC2012_val_00032174.JPEG
+
+
+
+
+
+
 
 python analyze_pert_results.py --variant relu --mode runPerts --method transformer_attribution --data-path ./ --batch-size 1  --num-workers 1 --both
 

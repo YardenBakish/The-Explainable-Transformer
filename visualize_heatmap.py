@@ -72,7 +72,7 @@ def generate_visualization_LRP(original_image, class_index=None):
 
 
 def generate_visualization_custom_LRP(original_image, class_index=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="custom_lrp", cp_rule=args.cp_rule, index=class_index)
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze().detach().cpu().numpy()
