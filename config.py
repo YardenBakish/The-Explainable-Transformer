@@ -100,6 +100,11 @@ PRETRAINED_MODELS_URL = {
 def set_components_custom_lrp(args):
     if args.method == "custom_lrp":
         print(f"inside config with custom_lrp")
+        if args.variant == "norm_batch":
+            args.cp_rule = True
+            return
+
+
         args.model_components['norm'] = partial(CustomLRPLayerNorm, eps=1e-6) 
         args.model_components['last_norm'] = CustomLRPLayerNorm
 

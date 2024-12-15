@@ -237,7 +237,7 @@ def eval_batch(image, labels, evaluator, index):
     
     # segmentation test for the rollout baseline
     if args.method    == 'custom_lrp':
-        Res = lrp.generate_LRP(image.cuda(), method="custom_lrp", cp_rule = args.cp_rule, index=index).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+        Res = lrp.generate_LRP(image.cuda(), method="custom_lrp", cp_rule = args.cp_rule).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
     
     elif args.method == 'rollout':
         Res = baselines.generate_rollout(image.cuda(), start_layer=1).reshape(batch_size, 1, 14, 14)

@@ -18,6 +18,8 @@ def _stabilize(input, epsilon=1e-6, inplace=False):
     """
     Stabilize the input by adding a small value to it
     """
+    if epsilon == None:
+        epsilon = 1e-6
     if inplace:
         return input.add_(epsilon)
     else:
@@ -274,11 +276,14 @@ class CustomLRPRMSNorm(nn.RMSNorm, RelProp):
         with torch.enable_grad():
             
             var = (x  ** 2).mean(dim=-1, keepdim=True)
-            std = (var + self.eps).sqrt()
+            if self.eps:
+                var = var + self.eps
+            std = (var).sqrt()
             y = (x ) / std.detach() # detach std operation will remove it from computational graph i.e. identity rule on x/std
-           
-            if self.bias is not None:
-                y += self.bias
+            
+            if self.weight is not None:
+                y *= self.weight
+            
             self.output11 = y
         return y
 
