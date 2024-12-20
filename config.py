@@ -27,6 +27,8 @@ MODEL_VARIANTS = {
             'bias_ablation'        :  {**DEFAULT_MODEL, 'isWithBias': False, },
             #Attention Activation Variants
             'attn_act_relu'        :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
+            'attn_act_relu_no_cp'        :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
+
             'attn_act_sigmoid'     :  {**DEFAULT_MODEL, 'attn_activation': SigmoidAttention()},
             'attn_act_sparsemax'   :  {**DEFAULT_MODEL, 'attn_activation': Sparsemax(dim=-1)},
             'attn_variant_light'   :  {**DEFAULT_MODEL,},
@@ -50,6 +52,8 @@ MODEL_VARIANTS = {
 
             'variant_simplified_blocks':        {**DEFAULT_MODEL,},
             'variant_registers':                {**DEFAULT_MODEL,},
+            'variant_proposed_solution':        {**DEFAULT_MODEL,'attn_activation': ReluAttention()},
+
 
             
 
@@ -62,7 +66,10 @@ MODEL_VARIANTS = {
 
 #chosen randmoly
 EPOCHS_TO_PERTURBATE = {
-            'basic':  [29, 28, 26, 22,10, 14  ]    ,       # ,12,16, 18  24,
+
+    'IMNET100': {
+        
+            'basic':  [29, 28, 26, 22,10, 14]    ,       # ,12,16, 18  24,
             'attn_act_relu':       [ 70, 52, 71, 72,73,74,75,  31,  33, 35, 45,],    # 14, 20,
             'act_softplus':       [49, 48,45,46,34, 3]   , # 3 34 ,40
             'act_softplus_norm_rms': [78,79,73,],                 #       60,59,58,50,48,46,44,40
@@ -71,7 +78,21 @@ EPOCHS_TO_PERTURBATE = {
             'bias_ablation':        [56, 58,56,] ,  #  54,44,47,40,37,33,32, 59
             'attn_act_sparsemax':   [69, 68, 67 ], # , 66
             'variant_layer_scale': [203,255],
-            'attn_variant_light':  [99]
+            'attn_variant_light':  [99],
+            'variant_more_ffn' :    [45],
+            'variant_more_attn' :    [45],
+            'variant_simplified_blocks': [220,210],
+            },
+
+
+    'IMNET' : {
+        'basic':          [0],
+        'norm_batch':     [0],
+        'attn_act_relu': [14],
+        'softplus':      [18],
+        'norm_rms':       [4]
+    }
+            
 }
 
 
@@ -99,6 +120,7 @@ PRETRAINED_MODELS_URL = {
 
 def set_components_custom_lrp(args):
     if args.method == "custom_lrp":
+        
         print(f"inside config with custom_lrp")
         if args.variant == "norm_batch":
             args.cp_rule = True
@@ -107,6 +129,10 @@ def set_components_custom_lrp(args):
 
         args.model_components['norm'] = partial(CustomLRPLayerNorm, eps=1e-6) 
         args.model_components['last_norm'] = CustomLRPLayerNorm
+
+        if args.variant == 'attn_act_relu_no_cp':
+            args.cp_rule = False
+            return
 
         if args.variant == "norm_rms":
             args.model_components['norm'] = partial(CustomLRPRMSNorm, eps=1e-6)  

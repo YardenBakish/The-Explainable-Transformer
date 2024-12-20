@@ -271,6 +271,52 @@ class CustomLRPLayerNorm(nn.LayerNorm, RelProp):
         return grads*self.X
 
 
+
+
+
+class CustomLRPBatchNorm(nn.BatchNorm1d, RelProp):
+    def forward(self, x):
+        with torch.enable_grad():
+            # Compute current batch statistics
+            mean = x.mean(dim=[0, 2])  # Mean across batch and sequence length
+            var = ((x - mean.view(1, -1, 1)) ** 2).mean(dim=[0, 2])
+            
+            # Update running averages
+            if self.track_running_stats:
+                with torch.no_grad():
+                    # Exponential moving average update
+                    self.running_mean = (1 - self.momentum) * self.running_mean + self.momentum * mean
+                    self.running_var = (1 - self.momentum) * self.running_var + self.momentum * var
+            
+            # Use running stats or current batch stats
+            use_mean = self.running_mean.view(1, -1, 1) if self.track_running_stats else mean.view(1, -1, 1)
+            use_var = self.running_var.view(1, -1, 1) if self.track_running_stats else var.view(1, -1, 1)
+            
+            # Compute std and detach it
+            std = (use_var + self.eps).sqrt().detach()
+            
+            # Normalize with detached std
+            y = (x - use_mean) / std
+            
+            # Apply learnable scale and shift
+            if self.weight is not None:
+                y *= self.weight.view(1, -1, 1)
+            if self.bias is not None:
+                y += self.bias.view(1, -1, 1)
+            
+            # Store for relevance propagation
+            self.X = x
+            self.output11 = y
+        
+        return y
+
+    def relprop(self, R, alpha):
+        Z = self.forward(self.X)
+        relevance_norm = R[0] / _stabilize(Z, self.eps, False)
+        grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
+        return grads*self.X
+
+
 class CustomLRPRMSNorm(nn.RMSNorm, RelProp):
     def forward(self, x):
         with torch.enable_grad():

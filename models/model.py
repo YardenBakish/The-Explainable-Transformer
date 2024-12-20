@@ -116,11 +116,14 @@ class Attention(nn.Module):
         
 
       
-        v_bias   = self.qkv.bias[dim*2:dim*3]
+       
         v_weight = self.qkv.weight[dim*2:dim*3].view(dim, dim)
         self.v_proj = Linear(dim, dim, bias=qkv_bias)
         self.v_proj.weight.data = v_weight
-        self.v_proj.bias.data = v_bias
+
+        if isWithBias:
+            v_bias   = self.qkv.bias[dim*2:dim*3]
+            self.v_proj.bias.data = v_bias
 
         self.attn_drop = Dropout(attn_drop)
         self.proj = Linear(dim, dim, bias = isWithBias)

@@ -110,6 +110,28 @@ def parse_args():
     return args
 
 
+
+MAPPER_HELPER = {
+   'basic': 'DeiT-tiny (fine-tuned)',
+   'attn act relu': 'Relu/seqlen',
+   'act softplus':   'Softplus Act.',
+   'act softplus norm rms': 'Softplus+RMSNorm',
+   'norm rms': 'RMSNorm',
+   'bias ablation': 'DeiT-tiny w/o Bias',
+   'norm bias ablation': 'LayerNorm w/o Bias',
+   'attn act sparsemax': 'Sparsemax',
+   'variant layer scale': 'DeiT-tiny w/ LayerScale',
+   'attn variant light': 'LightNet',
+   'variant more ffn': '2XFFN',
+   'variant more attn': '2XAttention',
+   'variant simplified blocks': 'DeiT-tiny w/o normalization',
+   'attn act sigmoid': 'sigmoid attention'
+
+
+
+}
+
+
 def gen_latex_table(global_top_mapper,args):
 
    ops      = ["top", "target"] 
@@ -162,7 +184,7 @@ def gen_latex_table(global_top_mapper,args):
 
    latex_code = latex_code + header_row + subheader_row + subsubheader_row
    for experiment in global_top_mapper:
-      row = experiment
+      row = MAPPER_HELPER[experiment]
       for a in a_values:
          for b in b_values:
             for c in c_values:
@@ -188,6 +210,8 @@ def parse_pert_results(pert_results_path, acc_keys, args, op):
         res_path = os.path.join(pert_results_path, res_dir)
         if os.path.isdir(res_path):
             # The key corresponds to the number in res_X
+            if "res" not in res_dir:
+               continue
             res_key = int(res_dir.split('_')[1])
             
             if res_key not in acc_keys:
@@ -199,6 +223,8 @@ def parse_pert_results(pert_results_path, acc_keys, args, op):
             pert_results_file = os.path.join(res_path, 'pert_results.json')
             with open(pert_results_file, 'r') as f:
                 pert_data = json.load(f)
+                if f'{args.method}_pos_auc_{op}' not in  pert_data:
+                   continue
                 pos_values[res_key] = pert_data.get(f'{args.method}_pos_auc_{op}', 0)
                 neg_values[res_key] = pert_data.get(f'{args.method}_neg_auc_{op}', 0)
 
@@ -253,12 +279,12 @@ def get_sorted_checkpoints(directory):
 TEMPORARY! based on current accuarcy results
 '''
 def filter_epochs(args, epoch, variant):
-   return epoch in args.epochs_to_perturbate[variant]
+   return epoch in args.epochs_to_perturbate[args.data_set][variant]
 
 
 
 def run_perturbations_env(args):
-   choices = args.epochs_to_perturbate.keys()
+   choices = args.epochs_to_perturbate[args.data_set].keys()
    for c in choices:
       args.variant = c
       run_perturbations(args)
@@ -304,12 +330,12 @@ def run_perturbations(args):
        if filter_epochs(args, int(epoch), variant ) == False:
           continue
        print(f"working on epoch {epoch}")
-       pert_results_dir = 'pert_results/suggested_norm' if args.default_norm else 'pert_results'
+       pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
        eval_pert_epoch_cmd = f"{eval_pert_cmd} --output-dir {model_dir}/{pert_results_dir}/res_{epoch}"
        if args.normalized_pert == 0:
           eval_pert_epoch_cmd+="_base"
       
-       eval_pert_epoch_cmd += f" --work-env {model_dir}/work_env/epoch{epoch}" 
+       eval_pert_epoch_cmd += f" --work-env {model_dir}/work_env/{args.method}/epoch{epoch}" 
        eval_pert_epoch_cmd += f" --custom-trained-model {model_dir}/{checkpoint_path}" 
        print(f'executing: {eval_pert_epoch_cmd}')
        try:
@@ -325,7 +351,7 @@ def run_perturbations(args):
 def generate_plots(dir_path,args):
     acc_results_path = os.path.join(dir_path, 'acc_results.json')
     acc_dict = parse_acc_results(acc_results_path)
-    pert_results_dir = 'pert_results/suggested_norm' if args.default_norm else 'pert_results'
+    pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
     
     pert_results_path = os.path.join(dir_path, pert_results_dir)
     pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args)
@@ -362,7 +388,7 @@ def parse_subdir(subdir):
 
 
 def analyze(args):
-   choices  =  args.epochs_to_perturbate.keys() 
+   choices  =  args.epochs_to_perturbate[args.data_set].keys() 
    root_dir = f"{args.dirs['finetuned_models_dir']}{args.data_set}"
    ops      = ["target", "top"] 
    if args.normalized_pert == 0:
@@ -371,7 +397,9 @@ def analyze(args):
    print(f"variants to consider: {choices}")
    print(f"operating on : {root_dir}")
 
-   global_top_mapper = {}
+   global_top_mapper      = {}
+   max_neg_global         = -float('inf')
+
 
    #if args.generate_plots:
    #   for c in choices:
@@ -381,7 +409,6 @@ def analyze(args):
    for op in ops:
    
       neg_list        = []
-      max_neg         = -float('inf')
       max_neg_subdir  = None
       max_neg_key     = None
    
@@ -398,7 +425,7 @@ def analyze(args):
        subdir = f'{root_dir}/{c}'
        acc_results_path = os.path.join(subdir, 'acc_results.json')
        acc_dict = parse_acc_results(acc_results_path)
-       pert_results_dir = 'pert_results/suggested_norm' if args.default_norm else 'pert_results'
+       pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
        pert_results_path = os.path.join(subdir, pert_results_dir)
        pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args, op)
        tmp_max_neg         = -float('inf')
@@ -410,31 +437,28 @@ def analyze(args):
 
        
        for key, neg_value in neg_dict.items():
-          neg_list.append((neg_value, pos_dict[key], subdir, key, acc_dict[key]))
-          
-          if exp not in best_exp:
-             best_exp[exp] = neg_lists[key]
-             tmp_max_neg   = neg_value
-             global_top_mapper[exp][f"neg_{op}"] = neg_value
-             global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
-          else:
-             if neg_value > tmp_max_neg:
-                best_exp[exp] = neg_lists[key]
-                tmp_max_neg   = neg_value
-
-                global_top_mapper[exp][f"neg_{op}"] = neg_value
-                global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
-
-
-
-
-
-          if neg_value > max_neg:
-           pos_val = pos_dict[key]
-           max_neg = neg_value
-           max_neg_subdir = subdir
-           max_neg_key = key
-
+         neg_list.append((neg_value, pos_dict[key], subdir, key, acc_dict[key]))
+         
+         if exp not in best_exp:
+            best_exp[exp] = neg_lists[key]
+            tmp_max_neg   = neg_value
+            global_top_mapper[exp][f"neg_{op}"] = neg_value
+            global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
+         else:
+            if neg_value > tmp_max_neg:
+               best_exp[exp] = neg_lists[key]
+               tmp_max_neg   = neg_value
+               global_top_mapper[exp][f"neg_{op}"] = neg_value
+               global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
+         
+         
+         
+         if neg_value > max_neg_global:
+            pos_val = pos_dict[key]
+            max_neg_global = neg_value
+            max_neg_subdir = subdir
+            max_neg_key = key
+       
        for key, pos_value in pos_dict.items():
           pos_list.append((pos_value, neg_dict[key], subdir, key, acc_dict[key] ))
           if pos_value < min_pos:
@@ -449,7 +473,7 @@ def analyze(args):
 
 
       print(f"The subdir with the highest neg value for {op} critertion is : {max_neg_subdir}")
-      print(f"Iter: {max_neg_key}, Neg Value: {max_neg}, Pos Value: {pos_val}")
+      print(f"Iter: {max_neg_key}, Neg Value: {max_neg_global}, Pos Value: {pos_val}")
       print("best pert score by negative perutrbations")
       for i in range(min(60, len(neg_list))):  # Make sure to not go beyond the available number of values
        neg_value, pos_value, subdir, key, acc = neg_list[i]

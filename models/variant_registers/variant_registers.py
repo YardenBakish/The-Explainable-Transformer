@@ -112,6 +112,15 @@ class Attention(nn.Module):
         self.matmul2 = einsum('bhij,bhjd->bhid')
 
         self.qkv = Linear(dim, dim * 3, bias=qkv_bias)
+
+        v_weight = self.qkv.weight[dim*2:dim*3].view(dim, dim)
+        self.v_proj = Linear(dim, dim, bias=qkv_bias)
+        self.v_proj.weight.data = v_weight
+
+        if isWithBias:
+            v_bias   = self.qkv.bias[dim*2:dim*3]
+            self.v_proj.bias.data = v_bias
+
         self.attn_drop = Dropout(attn_drop)
         self.proj = Linear(dim, dim, bias = isWithBias)
         self.proj_drop = Dropout(proj_drop)
@@ -158,6 +167,11 @@ class Attention(nn.Module):
         qkv = self.qkv(x)
         q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=h)
 
+
+        #done only for hook
+        tmp = self.v_proj(x)
+        #######
+
         self.save_v(v)
 
         dots = self.matmul1([q, k]) * self.scale
@@ -175,7 +189,7 @@ class Attention(nn.Module):
         out = self.proj_drop(out)
         return out
 
-    def relprop(self, cam, **kwargs):
+    def relprop(self, cam = None,cp_rule = False, **kwargs):
         cam = self.proj_drop.relprop(cam, **kwargs)
         cam = self.proj.relprop(cam, **kwargs)
         cam = rearrange(cam, 'b n (h d) -> b h n d', h=self.num_heads)
@@ -199,7 +213,13 @@ class Attention(nn.Module):
 
         cam_qkv = rearrange([cam_q, cam_k, cam_v], 'qkv b h n d -> b n (qkv h d)', qkv=3, h=self.num_heads)
 
-        return self.qkv.relprop(cam_qkv, **kwargs)
+
+        v_proj_map = cam_qkv[:,:,384:]
+        
+        if cp_rule:
+            return self.v_proj.relprop(v_proj_map, **kwargs) 
+        else:
+            return self.qkv.relprop(cam_qkv, **kwargs)
 
 
 class Block(nn.Module):
@@ -246,7 +266,7 @@ class Block(nn.Module):
         x = self.add2([x1, self.mlp(self.norm2(x2))])
         return x
 
-    def relprop(self, cam, **kwargs):
+    def relprop(self, cam = None, cp_rule = False, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
         cam2 = self.mlp.relprop(cam2, **kwargs)
        
@@ -254,7 +274,7 @@ class Block(nn.Module):
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
-        cam2 = self.attn.relprop(cam2, **kwargs)
+        cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
       
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
@@ -392,7 +412,7 @@ class VisionTransformer(nn.Module):
         x = self.head(x)
         return x
 
-    def relprop(self, cam=None,method="transformer_attribution", is_ablation=False, start_layer=0, **kwargs):
+    def relprop(self, cam=None,method="transformer_attribution", cp_rule = False, is_ablation=False, start_layer=0, **kwargs):
         # print(kwargs)
         # print("conservation 1", cam.sum())
         cam = self.head.relprop(cam, **kwargs)
@@ -401,14 +421,21 @@ class VisionTransformer(nn.Module):
      
         cam = self.norm.relprop(cam, **kwargs)
         for blk in reversed(self.blocks):
-            cam = blk.relprop(cam, **kwargs)
+            cam = blk.relprop(cam,cp_rule = cp_rule, **kwargs)
 
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
 
-        if method == "full":
+        if method   == "custom_lrp":
+            cam = cam[0, 5:, :]
+            #FIXME: slight tradeoff between noise and intensity of important features
+            #cam = cam.clamp(min=0)
+            norms = torch.norm(cam, p=2, dim=1)  # Shape: [196]
+            return norms
+
+        elif method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
-            cam = cam[:, 1:]
+            cam = cam[:, 5:]
             cam = self.patch_embed.relprop(cam, **kwargs)
             # sum on channels
             cam = cam.sum(dim=1)
@@ -422,7 +449,7 @@ class VisionTransformer(nn.Module):
                 avg_heads = (attn_heads.sum(dim=1) / attn_heads.shape[1]).detach()
                 attn_cams.append(avg_heads)
             cam = compute_rollout_attention(attn_cams, start_layer=start_layer)
-            cam = cam[:, 0, 1:]
+            cam = cam[:, 0, 5:]
             return cam
         
         # our method, method name grad is legacy
@@ -437,7 +464,7 @@ class VisionTransformer(nn.Module):
                 cam = cam.clamp(min=0).mean(dim=0)
                 cams.append(cam.unsqueeze(0))
             rollout = compute_rollout_attention(cams, start_layer=start_layer)
-            cam = rollout[:, 0, 1:]
+            cam = rollout[:, 0, 5:]
             return cam
             
         elif method == "last_layer":
@@ -448,14 +475,14 @@ class VisionTransformer(nn.Module):
                 grad = grad[0].reshape(-1, grad.shape[-1], grad.shape[-1])
                 cam = grad * cam
             cam = cam.clamp(min=0).mean(dim=0)
-            cam = cam[0, 1:]
+            cam = cam[0, 5:]
             return cam
 
         elif method == "last_layer_attn":
             cam = self.blocks[-1].attn.get_attn()
             cam = cam[0].reshape(-1, cam.shape[-1], cam.shape[-1])
             cam = cam.clamp(min=0).mean(dim=0)
-            cam = cam[0, 1:]
+            cam = cam[0, 5:]
             return cam
 
         elif method == "second_layer":
@@ -466,7 +493,7 @@ class VisionTransformer(nn.Module):
                 grad = grad[0].reshape(-1, grad.shape[-1], grad.shape[-1])
                 cam = grad * cam
             cam = cam.clamp(min=0).mean(dim=0)
-            cam = cam[0, 1:]
+            cam = cam[0, 5:]
             return cam
 
 

@@ -407,7 +407,11 @@ def main(args):
         pos_embed_checkpoint = checkpoint_model['pos_embed']
         embedding_size = pos_embed_checkpoint.shape[-1]
         num_patches = model.patch_embed.num_patches
+        num_current_extra_tokens  = model.pos_embed.shape[-2] - num_patches
         num_extra_tokens = model.pos_embed.shape[-2] - num_patches
+        if (args.variant == 'variant_registers' or args.variant == 'variant_proposed_solution') and args.resume == '':
+          num_extra_tokens = 1
+     
         # height (== width) for the checkpoint position embedding
         orig_size = int((pos_embed_checkpoint.shape[-2] - num_extra_tokens) ** 0.5)
         # height (== width) for the new position embedding
@@ -422,7 +426,15 @@ def main(args):
         pos_tokens = torch.nn.functional.interpolate(
             pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
         pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
-        new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
+
+
+        if (num_current_extra_tokens > num_extra_tokens):
+          registers = torch.full((1, 4, checkpoint_model['pos_embed'].shape[-1]), 0.1)
+          new_pos_embed = torch.cat((extra_tokens, registers, pos_tokens), dim=1)
+          print("here")
+        else:
+          new_pos_embed = torch.cat((extra_tokens,pos_tokens), dim=1)
+
         checkpoint_model['pos_embed'] = new_pos_embed
 
         model.load_state_dict(checkpoint_model, strict=False)
