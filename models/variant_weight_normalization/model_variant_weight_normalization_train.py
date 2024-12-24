@@ -276,7 +276,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = num_patches
 
-        self.proj = NormalizedConv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, x):
         B, C, H, W = x.shape

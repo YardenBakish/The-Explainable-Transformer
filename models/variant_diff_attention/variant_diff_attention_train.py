@@ -29,6 +29,95 @@ def lambda_init_fn(depth):
 
 
 
+class MultiheadDiffAttn(nn.Module):
+    def __init__(
+    self, dim, num_heads=6, qkv_bias=False,attn_drop=0., proj_drop=0., 
+       
+                attn_activation = Softmax(dim=-1), 
+                isWithBias      = True
+    ):
+        super().__init__()
+      
+        self.dim = dim
+        
+        # arg num_heads set to half of Transformer's num_heads
+        self.num_heads = num_heads
+        
+        # arg decoder_kv_attention_heads set to half of Transformer's num_kv_heads if use GQA
+        # set to same as num_heads if use normal MHA
+        self.num_kv_heads = num_heads
+        self.n_rep = self.num_heads // self.num_kv_heads
+        
+        self.head_dim = dim // num_heads // 2
+        self.scaling = self.head_dim ** -0.5
+        
+        self.q_proj = nn.Linear(dim, dim, bias=False)
+        self.k_proj = nn.Linear(dim, dim // self.n_rep, bias=False)
+        self.v_proj = nn.Linear(dim, dim // self.n_rep, bias=False)
+        self.out_proj = nn.Linear(dim, dim, bias=False)
+        depth = 12
+        self.lambda_init = lambda_init_fn(depth)
+        self.lambda_q1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1))
+        self.lambda_k1 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1))
+        self.lambda_q2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1))
+        self.lambda_k2 = nn.Parameter(torch.zeros(self.head_dim, dtype=torch.float32).normal_(mean=0,std=0.1))
+
+        self.subln = RMSNorm(2 * self.head_dim, eps=1e-5, elementwise_affine=True)
+    
+    def forward(
+        self,
+        x,
+        rel_pos,
+        attn_mask=None,
+    ):
+        bsz, tgt_len, embed_dim = x.size()
+        src_len = tgt_len
+
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
+
+        q = q.view(bsz, tgt_len, 2 * self.num_heads, self.head_dim)
+        k = k.view(bsz, src_len, 2 * self.num_kv_heads, self.head_dim)
+        v = v.view(bsz, src_len, self.num_kv_heads, 2 * self.head_dim)
+
+      
+
+        offset = src_len - tgt_len
+        q = q.transpose(1, 2)
+        k = repeat_kv(k.transpose(1, 2), self.n_rep)
+        v = repeat_kv(v.transpose(1, 2), self.n_rep)
+        q *= self.scaling
+        attn_weights = torch.matmul(q, k.transpose(-1, -2))
+        if attn_mask is None:
+            attn_mask = torch.triu(
+                torch.zeros([tgt_len, src_len])
+                .float()
+                .fill_(float("-inf"))
+                .type_as(attn_weights),
+                1 + offset,
+            )
+        attn_weights = torch.nan_to_num(attn_weights)
+        attn_weights += attn_mask   
+        attn_weights = F.softmax(attn_weights, dim=-1, dtype=torch.float32).type_as(
+            attn_weights
+        )
+
+        lambda_1 = torch.exp(torch.sum(self.lambda_q1 * self.lambda_k1, dim=-1).float()).type_as(q)
+        lambda_2 = torch.exp(torch.sum(self.lambda_q2 * self.lambda_k2, dim=-1).float()).type_as(q)
+        lambda_full = lambda_1 - lambda_2 + self.lambda_init
+        attn_weights = attn_weights.view(bsz, self.num_heads, 2, tgt_len, src_len)
+        attn_weights = attn_weights[:, :, 0] - lambda_full * attn_weights[:, :, 1]
+        
+        attn = torch.matmul(attn_weights, v)
+        attn = self.subln(attn)
+        attn = attn * (1 - self.lambda_init)
+        attn = attn.transpose(1, 2).reshape(bsz, tgt_len, self.num_heads * 2 * self.head_dim)
+
+        attn = self.out_proj(attn)
+        return attn
+    
+
 
 
 class CustomMultiheadDiffAttn(nn.Module):
@@ -65,16 +154,16 @@ class CustomMultiheadDiffAttn(nn.Module):
         self.lambda_q2 = nn.Parameter(torch.zeros(head_dim, dtype=torch.float32).normal_(mean=0,std=0.1))
         self.lambda_k2 = nn.Parameter(torch.zeros(head_dim, dtype=torch.float32).normal_(mean=0,std=0.1))
 
-       
+        self.subln = RMSNorm(head_dim, eps=1e-5, elementwise_affine=True)
 
        
-        v_weight = self.q1q2k1k2v.weight[dim*4:dim*5].view(dim, dim)
-        self.v_proj = Linear(dim, dim, bias=qkv_bias)
-        self.v_proj.weight.data = v_weight
+        #v_weight = self.q1q2k1k2v.weight[dim*2:dim*3].view(dim, dim)
+        #self.v_proj = Linear(dim, dim, bias=qkv_bias)
+        #self.v_proj.weight.data = v_weight
 
-        if isWithBias:
-            v_bias   = self.q1q2k1k2v.bias[dim*4:dim*5]
-            self.v_proj.bias.data = v_bias
+        #if isWithBias:
+        #    v_bias   = self.q1q2k1k2v.bias[dim*2:dim*3]
+        #    self.v_proj.bias.data = v_bias
 
         
         self.attn_drop1 = Dropout(attn_drop)
@@ -85,7 +174,7 @@ class CustomMultiheadDiffAttn(nn.Module):
         self.attn_activation1 = attn_activation
         self.attn_activation2 = attn_activation
 
-        self.norm = CustomLRPRMSNorm(head_dim)
+        self.norm = RMSNorm(head_dim)
        
         
         self.add = Add()
@@ -137,11 +226,9 @@ class CustomMultiheadDiffAttn(nn.Module):
             h=h
         )
         
-        #done only for hook
-        tmp = self.v_proj(x)
-        #######
+   
 
-        self.save_v(v)
+        #self.save_v(v)
 
         dots1 = self.matmul1a([q1, k1]) * self.scale
         dots2 = self.matmul1b([q2, k2]) * self.scale
@@ -151,7 +238,7 @@ class CustomMultiheadDiffAttn(nn.Module):
         attn2 = self.attn_activation2(dots2)
 
         attn1 = self.attn_drop1(attn1)
-        attn2 = self.attn_drop2(attn2)
+        attn2 = self.attn_drop1(attn2)
 
 
         lambda_1 = torch.exp(torch.sum(self.lambda_q1 * self.lambda_k1, dim=-1).float()).type_as(q1)
@@ -159,8 +246,8 @@ class CustomMultiheadDiffAttn(nn.Module):
         lambda_full = lambda_1 - lambda_2 + self.lambda_init
 
         attn = self.add([attn1, -lambda_full * attn2])
-        self.save_attn(attn)
-        attn.register_hook(self.save_attn_gradients)
+        #self.save_attn(attn)
+        #attn.register_hook(self.save_attn_gradients)
         
         
         out = self.matmul2([attn, v])
@@ -181,9 +268,6 @@ class CustomMultiheadDiffAttn(nn.Module):
         cam = self.proj_drop.relprop(cam, **kwargs)
         cam = self.proj.relprop(cam, **kwargs)
         cam = rearrange(cam, 'b n (h d) -> b h n d', h=self.num_heads)
-        if self.isWithAttnNorm:
-            cam = self.norm.relprop(cam, **kwargs)
-        
 
         # attn = A*V
         (cam1, cam_v)= self.matmul2.relprop(cam, **kwargs)
@@ -193,35 +277,24 @@ class CustomMultiheadDiffAttn(nn.Module):
         self.save_v_cam(cam_v)
         self.save_attn_cam(cam1)
 
-        (cam_attn1, cam_attn2)= self.add.relprop(cam1, **kwargs)
-        cam_attn1 = self.attn_drop1.relprop(cam_attn1, **kwargs)
-        cam_attn2 = self.attn_drop2.relprop(cam_attn2, **kwargs)
+        cam1 = self.attn_drop.relprop(cam1, **kwargs)
+      
+        cam1 = self.attn_activation.relprop(cam1, **kwargs)
 
-
-        cam_attn1 = self.attn_activation1.relprop(cam_attn1, **kwargs)
-        cam_attn2 = self.attn_activation2.relprop(cam_attn2, **kwargs)
-        
-
- 
         # A = Q*K^T
-        (cam_q1, cam_k1) = self.matmul1a.relprop(cam_attn1, **kwargs)
-        cam_q1 /= 2
-        cam_k1 /= 2
+        (cam_q, cam_k) = self.matmul1.relprop(cam1, **kwargs)
+        cam_q /= 2
+        cam_k /= 2
 
-               # A = Q*K^T
-        (cam_q2, cam_k2) = self.matmul1b.relprop(cam_attn2, **kwargs)
-        cam_q2 /= 2
-        cam_k2 /= 2
-
-        cam_qkv = rearrange([cam_q1, cam_q2, cam_k1, cam_k2, cam_v], 'qkv b h n d -> b n (qkv h d)', qkv=5, h=self.num_heads)
+        cam_qkv = rearrange([cam_q, cam_k, cam_v], 'qkv b h n d -> b n (qkv h d)', qkv=3, h=self.num_heads)
 
 
-        v_proj_map = cam_qkv[:,:,768:]
+        v_proj_map = cam_qkv[:,:,384:]
         
         if cp_rule:
             return self.v_proj.relprop(v_proj_map, **kwargs) 
         else:
-            return self.q1q2k1k2v.relprop(cam_qkv, **kwargs)
+            return self.qkv.relprop(cam_qkv, **kwargs)
 
 
 def safe_call(func, **kwargs):
@@ -349,7 +422,7 @@ class Block(nn.Module):
         x = self.add2([x1, self.mlp(self.norm2(x2))])
         return x
 
-    def relprop(self, cam = None, cp_rule = False, **kwargs):
+    def relprop(self, cam, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
         cam2 = self.mlp.relprop(cam2, **kwargs)
        
@@ -357,7 +430,7 @@ class Block(nn.Module):
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
-        cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
+        cam2 = self.attn.relprop(cam2, **kwargs)
       
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
@@ -465,7 +538,7 @@ class VisionTransformer(nn.Module):
                 nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    @property
+    @torch.jit.ignore
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
@@ -477,7 +550,7 @@ class VisionTransformer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.add([x, self.pos_embed])
 
-        x.register_hook(self.save_inp_grad)
+        #x.register_hook(self.save_inp_grad)
 
         for blk in self.blocks:
             x = blk(x)
@@ -488,7 +561,7 @@ class VisionTransformer(nn.Module):
         x = self.head(x)
         return x
 
-    def relprop(self, cam=None,method="transformer_attribution", cp_rule = False, is_ablation=False, start_layer=0, **kwargs):
+    def relprop(self, cam=None,method="transformer_attribution", is_ablation=False, start_layer=0, **kwargs):
         # print(kwargs)
         # print("conservation 1", cam.sum())
         cam = self.head.relprop(cam, **kwargs)
@@ -497,19 +570,12 @@ class VisionTransformer(nn.Module):
      
         cam = self.norm.relprop(cam, **kwargs)
         for blk in reversed(self.blocks):
-            cam = blk.relprop(cam,cp_rule = cp_rule, **kwargs)
+            cam = blk.relprop(cam, **kwargs)
 
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
 
-        if method   == "custom_lrp":
-            cam = cam[0, 1:, :]
-            #FIXME: slight tradeoff between noise and intensity of important features
-            #cam = cam.clamp(min=0)
-            norms = torch.norm(cam, p=2, dim=1)  # Shape: [196]
-            return norms
-
-        elif method == "full":
+        if method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
             cam = cam[:, 1:]
             cam = self.patch_embed.relprop(cam, **kwargs)
@@ -571,7 +637,6 @@ class VisionTransformer(nn.Module):
             cam = cam.clamp(min=0).mean(dim=0)
             cam = cam[0, 1:]
             return cam
-
 
 
 

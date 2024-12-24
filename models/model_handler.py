@@ -8,6 +8,7 @@ from models.variant_light_attention.variant_model_light_attn import deit_tiny_pa
 from models.variant_layer_scale.variant_model_layer_scale_train import deit_tiny_patch16_224 as model_variant_layer_scale_train
 from models.variant_layer_scale.variant_model_layer_scale import deit_tiny_patch16_224 as model_variant_layer_scale
 
+from models.variant_diff_attention.variant_diff_attention_train import deit_tiny_patch16_224 as model_variant_diff_attention_train
 from models.variant_diff_attention.variant_diff_attention import deit_tiny_patch16_224 as model_variant_diff_attention
 
 from models.variant_weight_normalization.model_variant_weight_normalization import deit_tiny_patch16_224 as model_variant_weight_normalization
@@ -163,7 +164,8 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
         )
 
 
-    if args.variant == 'variant_diff_attn':
+    if args.variant == 'variant_diff_attn' or args.variant == 'variant_diff_attn_relu':
+        isWithAttnNorm = True if args.variant == 'variant_diff_attn' else False
         if hooks:
             return model_variant_diff_attention(
             isWithBias      = args.model_components["isWithBias"],
@@ -173,7 +175,21 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
             activation      = args.model_components["activation"],
             attn_activation = args.model_components["attn_activation"],
             num_classes     = args.nb_classes,
+            isWithAttnNorm  = isWithAttnNorm
         )
+        
+        else:
+            return model_variant_diff_attention_train(
+            isWithBias      = args.model_components["isWithBias"],
+            layer_norm      = args.model_components["norm"],
+            last_norm       = args.model_components["last_norm"],
+
+            activation      = args.model_components["activation"],
+            attn_activation = args.model_components["attn_activation"],
+            num_classes     = args.nb_classes,
+            isWithAttnNorm  = isWithAttnNorm
+        )
+        
 
    
    

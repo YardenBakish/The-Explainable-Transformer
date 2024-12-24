@@ -59,7 +59,13 @@ def compute_saliency_and_save(args):
     #correct_label_dic = convertor_dict()
 
     with h5py.File(os.path.join(args.method_dir, 'results.hdf5'), 'a') as f:
-        data_cam = f.create_dataset('vis',
+        data_cam_pred = f.create_dataset('vis_pred',
+                                    (1, 1, 224, 224),
+                                    maxshape=(None, 1, 224, 224),
+                                    dtype=np.float32,
+                                    compression="gzip")
+        
+        data_cam_target = f.create_dataset('vis_target',
                                     (1, 1, 224, 224),
                                     maxshape=(None, 1, 224, 224),
                                     dtype=np.float32,
@@ -83,11 +89,14 @@ def compute_saliency_and_save(args):
  
             if first:
                  first = False
-                 data_cam.resize(data_cam.shape[0] + data.shape[0] - 1, axis=0)
+                 data_cam_pred.resize(data_cam_pred.shape[0] + data.shape[0] - 1, axis=0)
+                 data_cam_target.resize(data_cam_target.shape[0] + data.shape[0] - 1, axis=0)
+
                  data_image.resize(data_image.shape[0] + data.shape[0] - 1, axis=0)
                  data_target.resize(data_target.shape[0] + data.shape[0] - 1, axis=0)
             else:
-                 data_cam.resize(data_cam.shape[0] + data.shape[0], axis=0)
+                 data_cam_pred.resize(data_cam_pred.shape[0] + data.shape[0], axis=0)
+                 data_cam_target.resize(data_cam_target.shape[0] + data.shape[0], axis=0)
                  data_image.resize(data_image.shape[0] + data.shape[0], axis=0)
                  data_target.resize(data_target.shape[0] + data.shape[0], axis=0)
 
@@ -102,22 +111,27 @@ def compute_saliency_and_save(args):
             data = data.to(device)
             data.requires_grad_()
 
-            index = None
-            if args.vis_class == 'target':
-                index = target
+            #index = None
+            #if args.vis_class == 'target':
+            #    index = target
 
 
             if args.method    == 'custom_lrp':
-                 Res = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, index=index).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+                 Res_pred   = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, index=None).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+                 Res_target = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, index=target).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
 
             if args.method == 'rollout':
                 print("FIXME: make sure which model is sent out for this method")
                 exit(1)
-                Res = baselines.generate_rollout(data, start_layer=1).reshape(data.shape[0], 1, 14, 14)
+                Res_pred = baselines.generate_rollout(data, start_layer=1).reshape(data.shape[0], 1, 14, 14)
+                Res_target = Res_pred
+
                 # Res = Res - Res.mean()
 
             elif args.method == 'lrp':
-                Res = lrp.generate_LRP(data, start_layer=1, cp_rule = args.cp_rule, index=index).reshape(data.shape[0], 1, 14, 14)
+                Res_pred   = lrp.generate_LRP(data, start_layer=1, cp_rule = args.cp_rule, index=None).reshape(data.shape[0], 1, 14, 14)
+                Res_target = lrp.generate_LRP(data, start_layer=1, cp_rule = args.cp_rule, index=target).reshape(data.shape[0], 1, 14, 14)
+
                 # Res = Res - Res.mean()
 
             elif args.method == 'transformer_attribution':
@@ -126,12 +140,16 @@ def compute_saliency_and_save(args):
                 #print(f"predicted:  {output.data.topk(5, dim=1)[1][0].tolist() }")
                 #if output.data.topk(5, dim=1)[1][0].tolist()[0] == target:
                 #    count_correct+=1 
-                Res = lrp.generate_LRP(data, start_layer=1, method="grad",  cp_rule = args.cp_rule, index=index).reshape(data.shape[0], 1, 14, 14)
+                Res_pred   = lrp.generate_LRP(data, start_layer=1, method="grad",  cp_rule = args.cp_rule, index=None).reshape(data.shape[0], 1, 14, 14)
+                Res_target = lrp.generate_LRP(data, start_layer=1, method="grad",  cp_rule = args.cp_rule, index=target).reshape(data.shape[0], 1, 14, 14)
+                
                 # Res = Res - Res.mean()
 
             elif args.method == 'full_lrp':
               
-                Res = lrp.generate_LRP(data, method="full",  cp_rule = args.cp_rule, index=index).reshape(data.shape[0], 1, 224, 224)
+                Res_pred   = lrp.generate_LRP(data, method="full",  cp_rule = args.cp_rule, index=None).reshape(data.shape[0], 1, 224, 224)
+                Res_target = lrp.generate_LRP(data, method="full",  cp_rule = args.cp_rule, index=target).reshape(data.shape[0], 1, 224, 224)
+
                 # Res = Res - Res.mean()
 
             elif args.method == 'lrp_last_layer':
@@ -141,19 +159,25 @@ def compute_saliency_and_save(args):
                 # Res = Res - Res.mean()
 
             elif args.method == 'attn_last_layer':
-                Res = lrp.generate_LRP(data, method="last_layer_attn",  cp_rule = args.cp_rule, is_ablation=args.is_ablation) \
+                Res_pred = lrp.generate_LRP(data, method="last_layer_attn",  cp_rule = args.cp_rule, is_ablation=args.is_ablation) \
                     .reshape(data.shape[0], 1, 14, 14)
-
+                Res_target = Res_pred
             elif args.method == 'attn_gradcam':
                 print("FIXME: make sure which model is sent out for this method")
                 exit(1)
-                Res = baselines.generate_cam_attn(data, index=index).reshape(data.shape[0], 1, 14, 14)
+                #Res = baselines.generate_cam_attn(data, index=index).reshape(data.shape[0], 1, 14, 14)
 
             if args.method != 'full_lrp' and args.method != 'input_grads':
-                Res = torch.nn.functional.interpolate(Res, scale_factor=16, mode='bilinear').cuda()
-            Res = (Res - Res.min()) / (Res.max() - Res.min())
+                Res_pred = torch.nn.functional.interpolate(Res_pred, scale_factor=16, mode='bilinear').cuda()
+                Res_target = torch.nn.functional.interpolate(Res_target, scale_factor=16, mode='bilinear').cuda()
 
-            data_cam[-data.shape[0]:] = Res.data.cpu().numpy()
+            Res_pred = (Res_pred - Res_pred.min()) / (Res_pred.max() - Res_pred.min())
+            Res_target = (Res_target - Res_target.min()) / (Res_target.max() - Res_target.min())
+
+
+            data_cam_pred[-data.shape[0]:]   = Res_pred.data.cpu().numpy()
+            data_cam_target[-data.shape[0]:] = Res_target.data.cpu().numpy()
+
 
         print(f"count_correct: {count_correct}") 
 

@@ -24,10 +24,11 @@ class ImagenetResults(Dataset):
             self.data = h5py.File(self.path, 'r')
 
         image = torch.tensor(self.data['image'][item])
-        vis = torch.tensor(self.data['vis'][item])
+        vis_pred = torch.tensor(self.data['vis_pred'][item])
+        vis_target = torch.tensor(self.data['vis_target'][item])
         target = torch.tensor(self.data['target'][item]).long()
 
-        return image, vis, target
+        return image, vis_pred, vis_target, target
 
 
 if __name__ == '__main__':

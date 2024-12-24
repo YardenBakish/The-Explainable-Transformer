@@ -46,6 +46,8 @@ MODEL_VARIANTS = {
             #Special Variants
             'variant_layer_scale':              {**DEFAULT_MODEL,},
             'variant_diff_attn':                {**DEFAULT_MODEL,},
+            'variant_diff_attn_relu':           {**DEFAULT_MODEL,'attn_activation': ReluAttention(), 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
+
             'variant_weight_normalization':     {**DEFAULT_MODEL,},
             'variant_more_ffn':                 {**DEFAULT_MODEL,},
             'variant_more_attn':                {**DEFAULT_MODEL,},
@@ -93,6 +95,22 @@ EPOCHS_TO_PERTURBATE = {
         'norm_rms':       [4]
     }
             
+}
+
+
+EPOCHS_TO_SEGMENTATION = {
+    'basic':          [0],
+    'norm_batch':     [0],
+    'attn_act_relu': [53],
+    'attn_act_relu_no_cp': [14,20,50,53,10,12,30,40,48],
+    'variant_more_ffn': [155],
+    'variant_weight_normalization': [235],
+    'attn_act_sigmoid': [65,60,55],
+    'variant_simplified_blocks': [35,20],
+    'act_softplus': [18],
+    'norm_rms': [4]
+    #'softplus':      [18],
+    #'norm_rms':       [4]      
 }
 
 
@@ -166,7 +184,7 @@ def SET_PATH_CONFIG(args):
    
 
 
-def get_config(args, skip_further_testing = False, get_epochs_to_perturbate = False):
+def get_config(args, skip_further_testing = False, get_epochs_to_perturbate = False, get_epochs_to_segmentation = False):
 
     SET_VARIANTS_CONFIG(args)
     
@@ -178,7 +196,9 @@ def get_config(args, skip_further_testing = False, get_epochs_to_perturbate = Fa
     if get_epochs_to_perturbate:
         args.epochs_to_perturbate = EPOCHS_TO_PERTURBATE
         
-    
+    if get_epochs_to_segmentation:
+        args.epochs_to_segmentation = EPOCHS_TO_SEGMENTATION
+
    # if skip_further_testing == False:
    #     vars(args).update(DEFAULT_PARAMETERS)
 

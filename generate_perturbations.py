@@ -73,9 +73,10 @@ def eval(args, mode = None):
     else:
         raise Exception('scale not valid')
 
-    correctence_target_precentage   = np.full((9,len(imagenet_ds)),-1)
-    correctence_top_precentage      = np.full((9,len(imagenet_ds)),-1)
-
+    correctence_target_precentage          = np.full((9,len(imagenet_ds)),-1)
+    correctence_top_precentage             = np.full((9,len(imagenet_ds)),-1)
+    correctence_target_precentage_blurred  = np.full((9,len(imagenet_ds)),-1)
+    correctence_top_precentage_blurred     = np.full((9,len(imagenet_ds)),-1)
 
     num_correct_pertub       = np.zeros((9, len(imagenet_ds)))
     dissimilarity_pertub     = np.zeros((9, len(imagenet_ds)))
@@ -87,7 +88,7 @@ def eval(args, mode = None):
     last_label               = None
     blur_transform = GaussianBlur(kernel_size=(51, 51), sigma=(20, 20))
  
-    for batch_idx, (data, vis, target) in enumerate(tqdm(sample_loader)):
+    for batch_idx, (data, vis_pred, vis_target, target) in enumerate(tqdm(sample_loader)):
         
         #print(f"\n\n REAL TARGET : {target}")
         if args.debug :
@@ -102,7 +103,8 @@ def eval(args, mode = None):
 
         num_samples += len(data)
         data         = data.to(device)
-        vis          = vis.to(device)
+        vis_pred     = vis_pred.to(device)
+        vis_target   = vis_target.to(device)
         target       = target.to(device)
         norm_data    = imagenet_normalize(data.clone())
 
@@ -124,92 +126,137 @@ def eval(args, mode = None):
         dissimilarity_model[model_index:model_index+len(temp)] = temp
 
         if args.wrong:
-            wid = np.argwhere(tgt_pred == 0).flatten()
-            if len(wid) == 0:
-                continue
-            wid = torch.from_numpy(wid).to(vis.device)
-            vis = vis.index_select(0, wid)
-            data = data.index_select(0, wid)
-            target = target.index_select(0, wid)
+            exit(1)
+            #wid = np.argwhere(tgt_pred == 0).flatten()
+            #if len(wid) == 0:
+            #    continue
+            #wid = torch.from_numpy(wid).to(vis.device)
+            #vis = vis.index_select(0, wid)
+            #data = data.index_select(0, wid)
+            #target = target.index_select(0, wid)
 
         # Save original shape
         org_shape = data.shape
 
         if args.neg:
-            vis = -vis
+            vis_pred = -vis_pred
+            vis_target = -vis_target
 
-        vis = vis.reshape(org_shape[0], -1)
+
+        vis_pred   = vis_pred.reshape(org_shape[0], -1)
+        vis_target = vis_target.reshape(org_shape[0], -1)
+
+
 
         for i in range(len(perturbation_steps)):
-            _data         = data.clone()
-            _data_blurred = data.clone()
-            blurred_data = blur_transform(data)
+            _data_pred_pertubarted           = data.clone()
+            _data_target_pertubarted         = data.clone()
+            _data_blurred_pred_pertubarted   = data.clone()
+            _data_blurred_target_pertubarted = data.clone()
 
-            _, idx = torch.topk(vis, int(base_size * perturbation_steps[i]), dim=-1)
-            idx = idx.unsqueeze(1).repeat(1, org_shape[1], 1)
+            blurred_data = blur_transform(_data_blurred_pred_pertubarted)
+
+            _, idx_pred   = torch.topk(vis_pred, int(base_size * perturbation_steps[i]), dim=-1)
+            _, idx_target = torch.topk(vis_target, int(base_size * perturbation_steps[i]), dim=-1)
+
+            idx_pred   = idx_pred.unsqueeze(1).repeat(1, org_shape[1], 1)
+            idx_target = idx_target.unsqueeze(1).repeat(1, org_shape[1], 1)
 
 
-            _data = _data.reshape(org_shape[0], org_shape[1], -1)
-            _data_blurred = _data_blurred.reshape(org_shape[0], org_shape[1], -1)
+
+            _data_pred_pertubarted           = _data_pred_pertubarted.reshape(org_shape[0], org_shape[1], -1)
+            _data_target_pertubarted         = _data_target_pertubarted.reshape(org_shape[0], org_shape[1], -1)
+            _data_blurred_pred_pertubarted   = _data_blurred_pred_pertubarted.reshape(org_shape[0], org_shape[1], -1)
+            _data_blurred_target_pertubarted = _data_blurred_target_pertubarted.reshape(org_shape[0], org_shape[1], -1)
 
           
 
 
-            _data = _data.scatter_(-1, idx, 0)
+            _data_pred_pertubarted   = _data_pred_pertubarted.scatter_(-1, idx_pred, 0)
+            _data_target_pertubarted = _data_target_pertubarted.scatter_(-1, idx_target, 0)
 
-            _data_blurred = _data_blurred.scatter_(-1, idx, blurred_data.reshape(org_shape[0], org_shape[1], -1).gather(-1, idx))
-            
-            _data = _data.reshape(*org_shape)
-            _data_blurred = _data_blurred.reshape(*org_shape)
 
-            if mode == "blur":
-                _data = _data_blurred
+            _data_blurred_pred_pertubarted = _data_blurred_pred_pertubarted.scatter_(-1, idx_pred, blurred_data.reshape(org_shape[0], org_shape[1], -1).gather(-1, idx_pred))            
+            _data_blurred_target_pertubarted = _data_blurred_target_pertubarted.scatter_(-1, idx_target, blurred_data.reshape(org_shape[0], org_shape[1], -1).gather(-1, idx_target))
+
+
+            _data_pred_pertubarted               = _data_pred_pertubarted.reshape(*org_shape)
+            _data_target_pertubarted             = _data_target_pertubarted.reshape(*org_shape)
+            _data_blurred_pred_pertubarted       = _data_blurred_pred_pertubarted.reshape(*org_shape)
+            _data_blurred_target_pertubarted     = _data_blurred_target_pertubarted.reshape(*org_shape)
+
+
+          
+
+       
 
             #dbueg
             if args.debug:
                 os.makedirs(f'testing/pert_vis/{target.item()}', exist_ok=True)
-                np.save(f"testing/pert_vis/{target.item()}/pert_{i}",  _data.cpu().numpy())
-                np.save(f"testing/pert_vis/{target.item()}/pert_black{i}",  _data_blurred.cpu().numpy())  
+                np.save(f"testing/pert_vis/{target.item()}/pert_{i}",  _data_pred_pertubarted.cpu().numpy())
+                np.save(f"testing/pert_vis/{target.item()}/pert_black{i}",  _data_blurred_pred_pertubarted.cpu().numpy())  
 
             
-            _norm_data = imagenet_normalize(_data)
+            _norm_data_pred_pertubarted            = imagenet_normalize(_data_pred_pertubarted)
+            _norm_data_target_pertubarted          = imagenet_normalize(_data_target_pertubarted)
+            _norm_data_blurred_pred_pertubarted    = imagenet_normalize(_data_blurred_pred_pertubarted)
+            _norm_data_blurred_target_pertubarted  = imagenet_normalize(_data_blurred_target_pertubarted)
 
-            out = model(_norm_data)
 
-            pred_probabilities = torch.softmax(out, dim=1)
+            out_data_pred_pertubarted           = model(_norm_data_pred_pertubarted)
+            out_data_target_pertubarted         = model(_norm_data_target_pertubarted)
+            out_data_blurred_pred_pertubarted   = model(_norm_data_blurred_pred_pertubarted)
+            out_data_blurred_target_pertubarted = model(_norm_data_blurred_target_pertubarted)
+
+
+            pred_probabilities = torch.softmax(out_data_pred_pertubarted, dim=1)
             pred_prob = pred_probabilities.data.max(1, keepdim=True)[0].squeeze(1)
-            pred_class_pertubtated = out.data.max(1, keepdim=True)[1].squeeze(1)
+            
+            pred_class_pertubtated      = out_data_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+            pred_class_pertubtated_blur = out_data_blurred_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
 
 
 
-           # print(f'predicted for pert{i}: {pred_class_pertubtated}.item() vs. {target}')
             diff = (pred_prob - pred_org_prob).data.cpu().numpy()
             prob_diff_pertub[i, perturb_index:perturb_index+len(diff)] = diff
 
-            pred_logit = out.data.max(1, keepdim=True)[0].squeeze(1)
+            pred_logit = out_data_pred_pertubarted.data.max(1, keepdim=True)[0].squeeze(1)
             diff = (pred_logit - pred_org_logit).data.cpu().numpy()
             logit_diff_pertub[i, perturb_index:perturb_index+len(diff)] = diff
 
-            target_class = out.data.max(1, keepdim=True)[1].squeeze(1)
-            #print(f"\tPREDICTED CLASS 0.{i} : {target_class}")
+            target_class         = out_data_target_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+            target_class_blurred = out_data_blurred_target_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
 
-            temp = (target == target_class).type(target.type()).data.cpu().numpy()
 
-            isCorrectOnInitPred = (pred_class == pred_class_pertubtated).type(target.type()).data.cpu().numpy()[0]
+            temp        = (target == target_class).type(target.type()).data.cpu().numpy()
+            tempBlurred = (target == target_class_blurred).type(target.type()).data.cpu().numpy()
+
+
+            isCorrectOnInitPred        = (pred_class == pred_class_pertubtated).type(target.type()).data.cpu().numpy()[0]
+            isCorrectOnInitPredBlurred = (pred_class == pred_class_pertubtated_blur).type(target.type()).data.cpu().numpy()[0]
+            
+
 
             isCorrect =temp[0]
-          #  print(f'correct: {isCorrect}')
+            isCorrectBlurred =tempBlurred[0]
+
 
             num_correct_pertub[i, perturb_index:perturb_index+len(temp)] = temp
 
-            probs_pertub = torch.softmax(out, dim=1)
+            probs_pertub = torch.softmax(out_data_pred_pertubarted, dim=1)
             target_probs = torch.gather(probs_pertub, 1, target[:, None])[:, 0]
             second_probs = probs_pertub.data.topk(2, dim=1)[0][:, 1]
             temp = torch.log(target_probs / second_probs).data.cpu().numpy()
             dissimilarity_pertub[i, perturb_index:perturb_index+len(temp)] = temp
             #print(i,batch_idx)
-            correctence_target_precentage[i,batch_idx] = isCorrect
-            correctence_top_precentage[i,batch_idx]    = isCorrectOnInitPred
+            correctence_top_precentage[i,batch_idx]               = isCorrectOnInitPred
+            correctence_top_precentage_blurred[i,batch_idx]       = isCorrectOnInitPredBlurred
+
+            correctence_target_precentage[i,batch_idx]            = isCorrect
+            correctence_target_precentage_blurred[i,batch_idx]    = isCorrectBlurred
+
+
+
         model_index += len(target)
         perturb_index += len(target)
         
@@ -220,27 +267,27 @@ def eval(args, mode = None):
     # np.save(os.path.join(args.experiment_dir, 'perturbations_logit_diff.npy'), logit_diff_pertub[:, :perturb_index])
     # np.save(os.path.join(args.experiment_dir, 'perturbations_prob_diff.npy'), prob_diff_pertub[:, :perturb_index])
     
-    print(correctence_target_precentage)
+    #print(correctence_target_precentage)
 
     op1 = "target"
     op2 = "top"
 
-    if mode:
-        op1+= f"_{mode}"
-        op2+= f"_{mode}"
-
+ 
         
     res_target = calc_auc(perturbation_steps,correctence_target_precentage,op1)
-
-    print(correctence_top_precentage)
-    res_top = calc_auc(perturbation_steps,correctence_top_precentage,op2)
+    res_top    = calc_auc(perturbation_steps,correctence_top_precentage,op2)
     
     res_top.update(res_target)
     if args.output_dir:
         update_json(f"{args.output_dir}/pert_results.json", res_top)
 
     
-   
+    res_target = calc_auc(perturbation_steps,correctence_target_precentage_blurred, f'{op1}_blur')
+    res_top = calc_auc(perturbation_steps,correctence_top_precentage_blurred,f'{op2}_blur')
+
+    res_top.update(res_target)
+    if args.output_dir:
+        update_json(f"{args.output_dir}/pert_results.json", res_top)
     #print(np.mean(num_correct_model), np.std(num_correct_model))
     #print(np.mean(dissimilarity_model), np.std(dissimilarity_model))
     #print(perturbation_steps)
@@ -401,6 +448,6 @@ if __name__ == "__main__":
     eval(args)
     
     #if we do not use normalized pert we run a second run for blur
-    if args.normalized_pert == 0:
-        eval(args, "blur")
+   # if args.normalized_pert == 0:
+   #     eval(args, "blur")
 

@@ -60,7 +60,7 @@ def generate_visualization(batch_idx, original_image, class_index=None):
 
 
 
-def generate_visualization_LRP(original_image, class_index=None):
+def generate_visualization_LRP(original_image, class_index=None, i=None):
     transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="full", cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(224, 224).cuda().data.cpu().numpy()
     transformer_attribution = (transformer_attribution - transformer_attribution.min()) / (transformer_attribution.max() - transformer_attribution.min())
@@ -68,13 +68,16 @@ def generate_visualization_LRP(original_image, class_index=None):
     image_transformer_attribution = (image_transformer_attribution - image_transformer_attribution.min()) / (image_transformer_attribution.max() - image_transformer_attribution.min())
     #print(image_transformer_attribution.shape)
     
+    image_copy = 255 *image_transformer_attribution
+    image_copy = image_copy.astype('uint8')
+    Image.fromarray(image_copy, 'RGB').save(f'testing_vis/img_{i}.png')
     vis = show_cam_on_image(image_transformer_attribution, transformer_attribution)
     vis =  np.uint8(255 * vis)
     vis = cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)
     return vis
 
 
-def generate_visualization_custom_LRP(batch_idx, original_image, class_index=None):
+def generate_visualization_custom_LRP(batch_idx, original_image, class_index=None,i=None):
     transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
@@ -86,7 +89,10 @@ def generate_visualization_custom_LRP(batch_idx, original_image, class_index=Non
     image_transformer_attribution = original_image.permute(1, 2, 0).data.cpu().numpy()
     image_transformer_attribution = (image_transformer_attribution - image_transformer_attribution.min()) / (image_transformer_attribution.max() - image_transformer_attribution.min())
     #print(transformer_attribution)
-   
+    
+    image_copy = 255 *image_transformer_attribution
+    image_copy = image_copy.astype('uint8')
+    Image.fromarray(image_copy, 'RGB').save(f'testing_vis/img_{i}.png')
     vis = show_cam_on_image(image_transformer_attribution, transformer_attribution)
     vis =  np.uint8(255 * vis)
     vis = cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)
@@ -210,10 +216,10 @@ if __name__ == "__main__":
        vis = generate_visualization(batch_idx, data, args.class_index)
        method_name = "Att"
      elif args.method == "custom_lrp":
-       vis = generate_visualization_custom_LRP(batch_idx, data.squeeze(0), args.class_index)
+       vis = generate_visualization_custom_LRP(batch_idx, data.squeeze(0), args.class_index,batch_idx)
        method_name = "custom_lrp"
      else:
-       vis = generate_visualization_LRP(data, args.class_index)
+       vis = generate_visualization_LRP(data, args.class_index,batch_idx)
        method_name = "lrp"
      
      saved_image_path = f"testing_vis/{batch_idx}_{args.variant}.png"

@@ -2463,3 +2463,268 @@ fh.close()
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+    "transformer_attribution_pos_top": [
+        0.465,
+        0.28,
+        0.195,
+        0.135,
+        0.1,
+        0.06,
+        0.045,
+        0.055,
+        0.07
+    ],
+    "transformer_attribution_pos_auc_top": 0.11374999999999999,
+    "transformer_attribution_pos_target": [
+        0.42,
+        0.255,
+        0.175,
+        0.115,
+        0.085,
+        0.05,
+        0.035,
+        0.04,
+        0.06
+    ],
+    "transformer_attribution_pos_auc_target": 0.09949999999999999,
+    "transformer_attribution_pos_top_blur": [
+        0.53,
+        0.375,
+        0.32,
+        0.24,
+        0.155,
+        0.1,
+        0.085,
+        0.08,
+        0.06
+    ],
+    "transformer_attribution_pos_auc_top_blur": 0.165,
+    "transformer_attribution_pos_target_blur": [
+        0.52,
+        0.35,
+        0.29,
+        0.21,
+        0.135,
+        0.085,
+        0.08,
+        0.065,
+        0.045
+    ],
+    "transformer_attribution_pos_auc_target_blur": 0.14975,
+    "transformer_attribution_neg_top": [
+        0.885,
+        0.84,
+        0.84,
+        0.76,
+        0.62,
+        0.485,
+        0.34,
+        0.26,
+        0.195
+    ],
+    "transformer_attribution_neg_auc_top": 0.4685,
+    "transformer_attribution_neg_target": [
+        0.77,
+        0.725,
+        0.73,
+        0.675,
+        0.555,
+        0.44,
+        0.31,
+        0.24,
+        0.175
+    ],
+    "transformer_attribution_neg_auc_target": 0.41475,
+    "transformer_attribution_neg_top_blur": [
+        0.96,
+        0.93,
+        0.89,
+        0.845,
+        0.8,
+        0.785,
+        0.715,
+        0.63,
+        0.495
+    ],
+    "transformer_attribution_neg_auc_top_blur": 0.63225,
+    "transformer_attribution_neg_target_blur": [
+        0.795,
+        0.79,
+        0.78,
+        0.745,
+        0.76,
+        0.735,
+        0.655,
+        0.595,
+        0.485
+    ],
+    "transformer_attribution_neg_auc_target_blur": 0.5700000000000001
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#for simplified blocsks
+
+
+
+
+
+{
+    "transformer_attribution_pos_top": [
+        0.3992,
+        0.224,
+        0.1544,
+        0.1136,
+        0.0824,
+        0.0592,
+        0.044,
+        0.0368,
+        0.0296
+    ],
+    "transformer_attribution_pos_auc_top": 0.09288000000000002,
+    "transformer_attribution_pos_target": [
+        0.3896,
+        0.2176,
+        0.1488,
+        0.1064,
+        0.0832,
+        0.0592,
+        0.0432,
+        0.0352,
+        0.0312
+    ],
+    "transformer_attribution_pos_auc_target": 0.09039999999999998,
+    "transformer_attribution_pos_top_blur": [
+        0.5024,
+        0.3248,
+        0.2376,
+        0.18,
+        0.1384,
+        0.1128,
+        0.1024,
+        0.0784,
+        0.0704
+    ],
+    "transformer_attribution_pos_auc_top_blur": 0.14608,
+    "transformer_attribution_pos_target_blur": [
+        0.4904,
+        0.3112,
+        0.2232,
+        0.1672,
+        0.1264,
+        0.1,
+        0.0944,
+        0.072,
+        0.0616
+    ],
+    "transformer_attribution_pos_auc_target_blur": 0.13704,
+    "transformer_attribution_neg_top": [
+        0.8984,
+        0.8488,
+        0.8032,
+        0.7056,
+        0.5944,
+        0.472,
+        0.376,
+        0.2824,
+        0.2136
+    ],
+    "transformer_attribution_neg_auc_top": 0.46384000000000003,
+    "transformer_attribution_neg_target": [
+        0.7768,
+        0.7432,
+        0.72,
+        0.6432,
+        0.5488,
+        0.4392,
+        0.356,
+        0.2656,
+        0.2048
+    ],
+    "transformer_attribution_neg_auc_target": 0.42068000000000005,
+    "transformer_attribution_neg_top_blur": [
+        0.976,
+        0.9584,
+        0.944,
+        0.9184,
+        0.8696,
+        0.844,
+        0.7896,
+        0.6968,
+        0.5536
+    ],
+    "transformer_attribution_neg_auc_top_blur": 0.67856,
+    "transformer_attribution_neg_target_blur": [
+        0.8064,
+        0.7992,
+        0.7936,
+        0.7864,
+        0.7576,
+        0.736,
+        0.7016,
+        0.6248,
+        0.4992
+    ],
+    "transformer_attribution_neg_auc_target_blur": 0.5851999999999999
+}

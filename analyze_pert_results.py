@@ -125,7 +125,10 @@ MAPPER_HELPER = {
    'variant more ffn': '2XFFN',
    'variant more attn': '2XAttention',
    'variant simplified blocks': 'DeiT-tiny w/o normalization',
-   'attn act sigmoid': 'sigmoid attention'
+   'attn act sigmoid': 'sigmoid attention',
+   'attn act relu no cp': 'Relu/seqlen w/o cp',
+   'norm batch':           'BatchNorm',
+   'variant weight normalization': 'WeightNormalization'
 
 
 
