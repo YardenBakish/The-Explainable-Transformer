@@ -6,7 +6,9 @@ DEFAULT_MODEL = {
     'last_norm'            : LayerNorm ,
     'activation'           : GELU(),
     'isWithBias'           : True,
-    'attn_activation'      : Softmax(dim=-1) 
+    'attn_activation'      : Softmax(dim=-1),
+    'attn_drop_rate'       : 0.,
+    'FFN_drop_rate'        : 0.,
 }
 
 
@@ -27,6 +29,8 @@ MODEL_VARIANTS = {
             'bias_ablation'        :  {**DEFAULT_MODEL, 'isWithBias': False, },
             #Attention Activation Variants
             'attn_act_relu'        :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
+            'attn_act_relu_normalized'        :  {**DEFAULT_MODEL, 'attn_activation': NormalizedReluAttention()},
+
             'attn_act_relu_no_cp'        :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
 
             'attn_act_sigmoid'     :  {**DEFAULT_MODEL, 'attn_activation': SigmoidAttention()},
@@ -50,13 +54,17 @@ MODEL_VARIANTS = {
 
             'variant_weight_normalization':     {**DEFAULT_MODEL,},
             'variant_more_ffn':                 {**DEFAULT_MODEL,},
+            'variant_more_ffnx4':                 {**DEFAULT_MODEL,},
+            'attn_act_relu_pos'        :       {**DEFAULT_MODEL, 'attn_activation': ReluAttention(), 'activation': Softplus(), 'isWithBias': False, },
+            
             'variant_more_attn':                {**DEFAULT_MODEL,},
 
             'variant_simplified_blocks':        {**DEFAULT_MODEL,},
             'variant_registers':                {**DEFAULT_MODEL,},
             'variant_proposed_solution':        {**DEFAULT_MODEL,'attn_activation': ReluAttention()},
 
-
+            'variant_dropout'        :  {**DEFAULT_MODEL, 'attn_drop_rate': 0.2, 'FFN_drop_rate':0.4 },
+            
             
 
 
@@ -148,7 +156,7 @@ def set_components_custom_lrp(args):
         args.model_components['norm'] = partial(CustomLRPLayerNorm, eps=1e-6) 
         args.model_components['last_norm'] = CustomLRPLayerNorm
 
-        if args.variant == 'attn_act_relu_no_cp':
+        if (args.variant == 'attn_act_relu_no_cp') or (args.variant == 'variant_diff_attn_relu') or (args.variant == 'attn_act_relu_pos') or (args.variant == 'attn_act_relu_normalized'):
             args.cp_rule = False
             return
 

@@ -11,8 +11,7 @@ __all__ = ['forward_hook', 'Clone', 'Add', 'Cat', 'ReLU', 'GELU', 'Dropout', 'Ba
            'LayerNorm', 'AddEye','BatchNorm1D' ,'RMSNorm' , 'Softplus', 'UncenteredLayerNorm', 'Sigmoid', 'SigmoidAttention', 'ReluAttention',
            'Sparsemax',
            'RepBN',
-           'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d', 
-           'CustomLRPLayerNorm', 'CustomLRPRMSNorm', 'NormalizedReluAttention']
+           'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d', 'CustomLRPLayerNorm', 'CustomLRPRMSNorm']
 
 
 def _stabilize(input, epsilon=1e-6, inplace=False):
@@ -40,6 +39,7 @@ def forward_hook(self, input, output):
             x.requires_grad = True
             self.X.append(x)
     else:
+     
         self.X = input[0].detach()
         self.X.requires_grad = True
 
@@ -72,9 +72,14 @@ class RelPropSimple(RelProp):
 
         if torch.is_tensor(self.X) == False:
             outputs = []
+    
+
+
             outputs.append(self.X[0] * C[0])
             outputs.append(self.X[1] * C[1])
         else:
+      
+
             outputs = self.X * (C[0])
         return outputs
 
@@ -167,15 +172,19 @@ class Add(RelPropSimple):
 
         a = self.X[0] * C[0]
         b = self.X[1] * C[1]
+       # print(f"in ADD {a.shape}")
+       # print(f"in ADD {a.sum()}")
 
-        a_sum = a.sum()
-        b_sum = b.sum()
+        a_sum = a.sum(dim=(1,2))  # Shape: [batch_size]
+        b_sum = b.sum(dim=(1,2))  # Shape: [batch_size]
 
-        a_fact = safe_divide(a_sum.abs(), a_sum.abs() + b_sum.abs()) * R.sum()
-        b_fact = safe_divide(b_sum.abs(), a_sum.abs() + b_sum.abs()) * R.sum()
 
-        a = a * safe_divide(a_fact, a.sum())
-        b = b * safe_divide(b_fact, b.sum())
+        a_fact = safe_divide(a_sum.abs(), a_sum.abs() + b_sum.abs()).unsqueeze(-1).unsqueeze(-1) * R.sum(dim=(1,2), keepdim=True)
+        b_fact = safe_divide(b_sum.abs(), a_sum.abs() + b_sum.abs()).unsqueeze(-1).unsqueeze(-1) * R.sum(dim=(1,2), keepdim=True)
+
+        a = a * safe_divide(a_fact, a.sum(dim=(1,2), keepdim=True))
+        b = b * safe_divide(b_fact, b.sum(dim=(1,2), keepdim=True))
+    
 
         outputs = [a, b]
 
@@ -198,6 +207,7 @@ class IndexSelect(RelProp):
     def relprop(self, R, alpha):
         Z = self.forward(self.X, self.dim, self.indices)
         S = safe_divide(R, Z)
+      #  print(f"inside index select: {S.shape}")
         C = self.gradprop(Z, self.X, S)
 
         if torch.is_tensor(self.X) == False:
@@ -242,6 +252,8 @@ class Cat(RelProp):
 
         outputs = []
         for x, c in zip(self.X, C):
+       
+
             outputs.append(x * c)
 
         return outputs
@@ -253,7 +265,11 @@ class CustomLRPLayerNorm(nn.LayerNorm, RelProp):
         with torch.enable_grad():
 
             mean = x.mean(dim=-1, keepdim=True)
+            #print(f"var: {mean.shape}")
+
             var = ((x - mean) ** 2).mean(dim=-1, keepdim=True)
+            #print(f"var: {var.shape}")
+
             std = (var + self.eps).sqrt()
             y = (x - mean) / std.detach() # detach std operation will remove it from computational graph i.e. identity rule on x/std
             if self.weight is not None:
@@ -267,8 +283,11 @@ class CustomLRPLayerNorm(nn.LayerNorm, RelProp):
 
     def relprop(self, R, alpha):
         Z = self.forward(self.X)
-        relevance_norm = R[0] / _stabilize(Z, self.eps, False)
+        print(R.shape)
+        print("\n\n")
+        relevance_norm = R / _stabilize(Z, self.eps, False)
         grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
+        print(grads.shape)
         return grads*self.X
 
 
@@ -281,7 +300,7 @@ class CustomLRPBatchNorm(nn.BatchNorm1d, RelProp):
             # Compute current batch statistics
             mean = x.mean(dim=[0, 2])  # Mean across batch and sequence length
             var = ((x - mean.view(1, -1, 1)) ** 2).mean(dim=[0, 2])
-            
+            #print(f"var: {var.shape}")
             # Update running averages
             if self.track_running_stats:
                 with torch.no_grad():
@@ -390,25 +409,6 @@ class Linear(nn.Linear, RelProp):
         return R
 
 
-
-
-class NormalizedReluAttention(nn.Module):
-    def __init__(self, n= 197):
-        super(NormalizedReluAttention, self).__init__()
-        self.seqlen = n ** -1
-        self.act_variant = ReLU()
-    
-    def forward(self,x):
-      x = self.act_variant(x)
-      row_sums = x.sum(dim=3, keepdim=True)  
-      normalized_attention_map = x / (row_sums + 1e-6)
-
-      return normalized_attention_map * self.seqlen
-    
-    def relprop(self, cam, **kwargs):
-        return self.act_variant.relprop(cam, **kwargs)
-    
-    
 
 class WeightNormLinear(Linear):
   def __init__(self, in_features, out_features, bias=True):

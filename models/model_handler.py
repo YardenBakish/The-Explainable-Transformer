@@ -110,8 +110,9 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
 
             )
 
-    if args.variant == 'variant_more_attn' or args.variant == 'variant_more_ffn':
-        less_attention = True if args.variant == 'variant_more_ffn' else False
+    if 'variant_more' in args.variant:
+        less_attention = True if 'more_ffn' in args.variant else False
+        ratio = 4 if '4' in args.variant else 2
         if hooks:
 
             return model_variant_less_is_more(
@@ -122,7 +123,8 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
             activation      = args.model_components["activation"],
             attn_activation = args.model_components["attn_activation"],
             num_classes     = args.nb_classes,
-            less_attention  = less_attention
+            less_attention  = less_attention,
+            ratio           = ratio,
         )
             
 
@@ -136,6 +138,8 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
             attn_activation = args.model_components["attn_activation"],
             num_classes     = args.nb_classes,
             less_attention  = less_attention,
+            ratio           = ratio,
+
         )
             
 
@@ -250,6 +254,9 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
             isWithBias      = args.model_components["isWithBias"],
             layer_norm      = args.model_components["norm"],
             last_norm       = args.model_components["last_norm"],
+            attn_drop_rate  = args.model_components["attn_drop_rate"],
+            FFN_drop_rate   = args.model_components["FFN_drop_rate"],
+
 
             activation      = args.model_components["activation"],
             attn_activation = args.model_components["attn_activation"],
@@ -260,6 +267,8 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
             isWithBias      = args.model_components["isWithBias"],
             layer_norm      = args.model_components["norm"],
             last_norm       = args.model_components["last_norm"],
+            attn_drop_rate  = args.model_components["attn_drop_rate"],
+            FFN_drop_rate   = args.model_components["FFN_drop_rate"],
 
             activation      = args.model_components["activation"],
             attn_activation = args.model_components["attn_activation"],

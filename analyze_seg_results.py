@@ -10,13 +10,13 @@ import numpy as np
 def parse_args():
     parser = argparse.ArgumentParser(description='evaluate perturbations')
     
-    parser.add_argument('--mode', required=True, choices = ['segmentations', 'analyze'])
+    parser.add_argument('--mode', required=True, choices = ['segmentations', 'analyze', 'analyze_comparison'])
  
 
     parser.add_argument('--gen-latex', action='store_true')
     parser.add_argument('--otsu-thr', action='store_true')
     parser.add_argument('--variant', default = 'basic',  type=str, help="")
-    parser.add_argument('--analyze-comparison', action='store_true')
+  
 
     parser.add_argument('--check-all', action='store_true')
  
@@ -280,11 +280,11 @@ if __name__ == "__main__":
     args                   = parse_args()
     config.get_config(args, skip_further_testing = True, get_epochs_to_segmentation = True)
     
-    if args.analyze_comparison:
+    if args.mode == 'analyze_comparison':
        analyze_comparison(args)
-       exit(1)
-       
-    if args.mode == "segmentations":
+    
+      
+    elif args.mode == "segmentations":
        if args.check_all:
           run_segmentations_env(args)
        else: 

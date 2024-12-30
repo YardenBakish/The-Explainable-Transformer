@@ -84,6 +84,9 @@ class Mlp(nn.Module):
 
     def relprop(self, cam, **kwargs):
         cam = self.drop.relprop(cam, **kwargs)
+        if cam.shape[0] != 2:
+          print("MLP")
+  
         cam = self.fc2.relprop(cam, **kwargs)
         cam = self.act.relprop(cam, **kwargs)
         cam = self.fc1.relprop(cam, **kwargs)
@@ -94,7 +97,8 @@ class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False,attn_drop=0., proj_drop=0., 
        
                 attn_activation = Softmax(dim=-1), 
-                isWithBias      = True):
+                isWithBias      = True, 
+             ):
         
         super().__init__()
 
@@ -112,6 +116,18 @@ class Attention(nn.Module):
         self.matmul2 = einsum('bhij,bhjd->bhid')
 
         self.qkv = Linear(dim, dim * 3, bias=qkv_bias)
+        
+
+      
+       
+        v_weight = self.qkv.weight[dim*2:dim*3].view(dim, dim)
+        self.v_proj = Linear(dim, dim, bias=qkv_bias)
+        self.v_proj.weight.data = v_weight
+
+        if isWithBias:
+            v_bias   = self.qkv.bias[dim*2:dim*3]
+            self.v_proj.bias.data = v_bias
+
         self.attn_drop = Dropout(attn_drop)
         self.proj = Linear(dim, dim, bias = isWithBias)
         self.proj_drop = Dropout(proj_drop)
@@ -157,6 +173,11 @@ class Attention(nn.Module):
         b, n, _, h = *x.shape, self.num_heads
         qkv = self.qkv(x)
         q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=h)
+        
+        #done only for hook
+        tmp = self.v_proj(x)
+        #######
+
 
         self.save_v(v)
 
@@ -166,7 +187,7 @@ class Attention(nn.Module):
         attn = self.attn_drop(attn)
 
         self.save_attn(attn)
-        #attn.register_hook(self.save_attn_gradients)
+        attn.register_hook(self.save_attn_gradients)
 
         out = self.matmul2([attn, v])
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -175,9 +196,13 @@ class Attention(nn.Module):
         out = self.proj_drop(out)
         return out
 
-    def relprop(self, cam, **kwargs):
+    def relprop(self, cam = None,cp_rule = False, **kwargs):
         cam = self.proj_drop.relprop(cam, **kwargs)
+        if cam.shape[0] != 2:
+          print("ATTN")
         cam = self.proj.relprop(cam, **kwargs)
+        if cam.shape[0] != 2:
+          print("ATTN")
         cam = rearrange(cam, 'b n (h d) -> b h n d', h=self.num_heads)
 
         # attn = A*V
@@ -199,7 +224,13 @@ class Attention(nn.Module):
 
         cam_qkv = rearrange([cam_q, cam_k, cam_v], 'qkv b h n d -> b n (qkv h d)', qkv=3, h=self.num_heads)
 
-        return self.qkv.relprop(cam_qkv, **kwargs)
+
+        v_proj_map = cam_qkv[:,:,384:]
+        
+        if cp_rule:
+            return self.v_proj.relprop(v_proj_map, **kwargs) 
+        else:
+            return self.qkv.relprop(cam_qkv, **kwargs)
 
 
 class Block(nn.Module):
@@ -208,7 +239,8 @@ class Block(nn.Module):
                 isWithBias = True,
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
-                attn_activation = Softmax(dim=-1) ):
+                attn_activation = Softmax(dim=-1),
+             ):
         super().__init__()
         print(f"Inside block with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
 
@@ -220,6 +252,7 @@ class Block(nn.Module):
             proj_drop       = drop, 
             attn_activation = attn_activation,
             isWithBias      = isWithBias,
+          
            )
         
         self.norm2 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
@@ -246,7 +279,7 @@ class Block(nn.Module):
         x = self.add2([x1, self.mlp(self.norm2(x2))])
         return x
 
-    def relprop(self, cam, **kwargs):
+    def relprop(self, cam = None, cp_rule = False, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
         cam2 = self.mlp.relprop(cam2, **kwargs)
        
@@ -254,7 +287,7 @@ class Block(nn.Module):
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
-        cam2 = self.attn.relprop(cam2, **kwargs)
+        cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
       
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
@@ -299,7 +332,8 @@ class VisionTransformer(nn.Module):
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
                 attn_activation = Softmax(dim=-1),
-                last_norm       = LayerNorm,):
+                last_norm       = LayerNorm,
+               ):
         
         super().__init__()
         print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -321,7 +355,8 @@ class VisionTransformer(nn.Module):
                 isWithBias      = isWithBias, 
                 layer_norm      = layer_norm,
                 activation      = activation,
-                attn_activation = attn_activation,)
+                attn_activation = attn_activation,
+               )
             for i in range(depth)])
 
         self.norm = safe_call(last_norm, normalized_shape= embed_dim, bias = isWithBias ) 
@@ -360,7 +395,7 @@ class VisionTransformer(nn.Module):
                 nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    @torch.jit.ignore
+    @property
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
@@ -372,7 +407,7 @@ class VisionTransformer(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.add([x, self.pos_embed])
 
-        #x.register_hook(self.save_inp_grad)
+        x.register_hook(self.save_inp_grad)
 
         for blk in self.blocks:
             x = blk(x)
@@ -383,21 +418,35 @@ class VisionTransformer(nn.Module):
         x = self.head(x)
         return x
 
-    def relprop(self, cam=None,method="transformer_attribution", is_ablation=False, start_layer=0, **kwargs):
+    def relprop(self, cam=None,method="transformer_attribution", cp_rule = False, is_ablation=False, start_layer=0, **kwargs):
         # print(kwargs)
         # print("conservation 1", cam.sum())
         cam = self.head.relprop(cam, **kwargs)
+        print(f"cam of head: {cam.shape}")
+
         cam = cam.unsqueeze(1)
+        print(f"cam is now: {cam.shape}")
+
         cam = self.pool.relprop(cam, **kwargs)
      
         cam = self.norm.relprop(cam, **kwargs)
         for blk in reversed(self.blocks):
-            cam = blk.relprop(cam, **kwargs)
+            cam = blk.relprop(cam,cp_rule = cp_rule, **kwargs)
 
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
 
-        if method == "full":
+        if method   == "custom_lrp":
+            print(f"cam: {cam.shape}")
+            cam = cam[:, 1:, :]
+            print(f"cam: {cam.shape}")
+
+            #FIXME: slight tradeoff between noise and intensity of important features
+            #cam = cam.clamp(min=0)
+            norms = torch.norm(cam, p=2, dim=-1)  # Shape: [196]
+            return norms
+
+        elif method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
             cam = cam[:, 1:]
             cam = self.patch_embed.relprop(cam, **kwargs)
@@ -428,6 +477,9 @@ class VisionTransformer(nn.Module):
                 cam = cam.clamp(min=0).mean(dim=0)
                 cams.append(cam.unsqueeze(0))
             rollout = compute_rollout_attention(cams, start_layer=start_layer)
+            
+            print("NOWWW")
+            print(rollout.shape)
             cam = rollout[:, 0, 1:]
             return cam
             
@@ -488,8 +540,7 @@ def deit_tiny_patch16_224(pretrained=False,
                           activation = GELU,
                           attn_activation = Softmax(dim=-1) ,
                           last_norm       = LayerNorm,
-                          attn_drop_rate  = 0.,
-                          FFN_drop_rate   = 0.,
+                        
                           **kwargs):
 
     print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -501,8 +552,7 @@ def deit_tiny_patch16_224(pretrained=False,
         activation      = activation,
         attn_activation = attn_activation,
         last_norm       = last_norm,
-        attn_drop_rate  = attn_drop_rate,
-        drop_rate       = FFN_drop_rate,
+    
         **kwargs)
     
     model.default_cfg = _cfg()

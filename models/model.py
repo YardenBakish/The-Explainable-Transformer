@@ -523,6 +523,8 @@ def deit_tiny_patch16_224(pretrained=False,
                           activation = GELU,
                           attn_activation = Softmax(dim=-1) ,
                           last_norm       = LayerNorm,
+                          attn_drop_rate  = 0.,
+                          FFN_drop_rate   = 0.,
                         
                           **kwargs):
 
@@ -535,6 +537,8 @@ def deit_tiny_patch16_224(pretrained=False,
         activation      = activation,
         attn_activation = attn_activation,
         last_norm       = last_norm,
+        attn_drop_rate  = attn_drop_rate,
+        drop_rate       = FFN_drop_rate,
     
         **kwargs)
     

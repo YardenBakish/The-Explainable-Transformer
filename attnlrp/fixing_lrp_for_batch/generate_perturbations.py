@@ -9,7 +9,7 @@ Flow:
     (c) calculate mean over the samples for each step, and then calculate AUC
  (3) repeat again for blur experiment
 '''
-from sklearn.cluster import KMeans
+
 import torch
 import os
 from tqdm import tqdm
@@ -32,82 +32,10 @@ from dataset.expl_hdf5 import ImagenetResults
 import config
 
 
-DEBUG_MAX_ITER = 10
-
-def bin_relevancy_map_batch(relevancy_maps, n_bins=9):
-    """
-    Applies KMeans clustering to batch of relevancy maps to create adaptive bins.
-    
-    Args:
-        relevancy_maps: tensor of shape (batch_size, num_pixels) containing relevance scores
-        n_bins: Number of desired bins (default=9)
-    
-    Returns:
-        bin_indices: tensor of same shape as input with bin labels (0 to n_bins-1)
-        thresholds: List of bin boundaries for each sample
-    """
-    batch_size = relevancy_maps.shape[0]
-    bin_indices_list = []
-    thresholds_list = []
-    
-    print(f"BATCH SIZE: {batch_size}")
-    # Process each sample in the batch
-    for i in range(batch_size):
-        # Convert to numpy for sklearn
-        relevancy_map = relevancy_maps[i].cpu().numpy()
-        flat_relevancy = relevancy_map.reshape(-1, 1)
-
-        print(f"flat_relevancy SHAPE: {flat_relevancy.shape}")
-
-        
-        # Apply KMeans clustering
-        kmeans = KMeans(n_clusters=n_bins, random_state=42)
-        bin_labels = kmeans.fit_predict(flat_relevancy)
-        print(f"bin labels SHAPE: {bin_labels.shape}")
-        
-        # Sort clusters by center values
-        centers = kmeans.cluster_centers_.flatten()
-        print(f"centers SHAPE: {centers.shape}")
-        print(f"centers : {centers}")
+DEBUG_MAX_ITER = 2
 
 
-        sorted_center_indices = np.argsort(centers)
-        print(f"sorted_center_indices : {sorted_center_indices}")
-        
-        # Create mapping to ensure bins are ordered
-        label_mapping = {old: new for new, old in enumerate(sorted_center_indices)}
-        new_labels = np.array([label_mapping[label] for label in bin_labels])
-        
-        # Calculate thresholds between bins
-        sorted_centers = np.sort(centers)
-        thresholds = [(sorted_centers[i] + sorted_centers[i+1]) / 2 
-                     for i in range(len(sorted_centers)-1)]
-        
-        # Convert back to tensor and store
-        bin_indices_list.append(torch.from_numpy(new_labels).to(relevancy_maps.device))
-        thresholds_list.append(thresholds)
-    print(bin_indices_list[0].shape)
-    print( torch.unique( bin_indices_list[0]))
-
-    print("\n\n")
-    print(thresholds_list)
-
-    return torch.stack(bin_indices_list), thresholds_list
-
-
-def get_mask_for_bin_batch(bin_indices, bin_number):
-    """
-    Creates boolean masks for pixels in the specified bin for entire batch.
-    
-    Args:
-        bin_indices: tensor of shape (batch_size, num_pixels) containing bin labels
-        bin_number: Which bin to mask (0 to n_bins-1)
-    
-    Returns:
-        Boolean tensor mask where True indicates pixels in the specified bin
-    """
-    return bin_indices <= bin_number
-
+  
 
 imagenet_normalize = transforms.Compose([
     #transforms.Resize(256, interpolation=3),
@@ -162,6 +90,9 @@ def eval(args, mode = None):
  
     for batch_idx, (data, vis_pred, vis_target, target) in enumerate(tqdm(sample_loader)):
         
+
+    
+     
         #print(f"\n\n REAL TARGET : {target}")
         if args.debug :
           if last_label == None or last_label != target:
@@ -182,7 +113,10 @@ def eval(args, mode = None):
 
         # Compute model accuracy
         pred               = model(norm_data)
+    
+       
         pred_probabilities = torch.softmax(pred, dim=1)
+    
         pred_org_logit     = pred.data.max(1, keepdim=True)[0].squeeze(1)
         pred_org_prob      = pred_probabilities.data.max(1, keepdim=True)[0].squeeze(1)
         pred_class         = pred.data.max(1, keepdim=True)[1].squeeze(1)
@@ -219,37 +153,31 @@ def eval(args, mode = None):
         vis_target = vis_target.reshape(org_shape[0], -1)
 
 
-        pred_bins, pred_thresholds = bin_relevancy_map_batch(vis_pred)
-        target_bins, target_thresholds = bin_relevancy_map_batch(vis_target)
-
-
 
         for i in range(len(perturbation_steps)):
             _data_pred_pertubarted           = data.clone()
-            _data_target_pertubarted         = data.clone()
-            _data_blurred_pred_pertubarted   = data.clone()
-            _data_blurred_target_pertubarted = data.clone()
+            _data_target_pertubarted         =  data.clone()
+            _data_blurred_pred_pertubarted   =  data.clone()
+            _data_blurred_target_pertubarted =  data.clone()
 
             blurred_data = blur_transform(_data_blurred_pred_pertubarted)
-            print(f"pred_bins shape: {pred_bins.shape}")
-            print(f"pred_thresholds : {pred_thresholds}")
-            
-            pred_mask = get_mask_for_bin_batch(pred_bins[0], i)
-            target_mask = get_mask_for_bin_batch(target_bins[0], i)
-            
-            print(f"pred_mask values: {torch.unique(pred_mask)}")
-            print(f"pred_mask shape: {pred_mask.shape}")
+
+            _, idx_pred   = torch.topk(vis_pred, int(base_size * perturbation_steps[i]), dim=-1)
+            _, idx_target = torch.topk(vis_target, int(base_size * perturbation_steps[i]), dim=-1)
 
 
-            idx_pred = pred_mask.nonzero().squeeze(1)  # Shape: [N] where N is number of True values
-            idx_pred = idx_pred.unsqueeze(0).unsqueeze(0).expand(org_shape[0], org_shape[1], -1)  # Shape: [1, 3, N]
-            
-            idx_target = target_mask.nonzero().squeeze(1)
-            idx_target = idx_target.unsqueeze(0).unsqueeze(0).expand(org_shape[0], org_shape[1], -1)
+ 
+            idx_pred   = idx_pred.unsqueeze(1).repeat(1, org_shape[1], 1)
+
+
+            idx_target = idx_target.unsqueeze(1).repeat(1, org_shape[1], 1)
 
 
 
             _data_pred_pertubarted           = _data_pred_pertubarted.reshape(org_shape[0], org_shape[1], -1)
+
+            #print(f"_data_pred_pertubarted shape: {_data_pred_pertubarted.shape}")
+
             _data_target_pertubarted         = _data_target_pertubarted.reshape(org_shape[0], org_shape[1], -1)
             _data_blurred_pred_pertubarted   = _data_blurred_pred_pertubarted.reshape(org_shape[0], org_shape[1], -1)
             _data_blurred_target_pertubarted = _data_blurred_target_pertubarted.reshape(org_shape[0], org_shape[1], -1)
@@ -258,6 +186,8 @@ def eval(args, mode = None):
 
 
             _data_pred_pertubarted   = _data_pred_pertubarted.scatter_(-1, idx_pred, 0)
+           # print(f"_data_pred_pertubarted shape: {_data_pred_pertubarted.shape}")
+
             _data_target_pertubarted = _data_target_pertubarted.scatter_(-1, idx_target, 0)
 
 
@@ -277,9 +207,9 @@ def eval(args, mode = None):
 
             #dbueg
             if args.debug:
-                os.makedirs(f'testing2/pert_vis/{target.item()}', exist_ok=True)
-                np.save(f"testing2/pert_vis/{target.item()}/pert_{i}",  _data_pred_pertubarted.cpu().numpy())
-                np.save(f"testing2/pert_vis/{target.item()}/pert_black{i}",  _data_blurred_pred_pertubarted.cpu().numpy())  
+                os.makedirs(f'testing/pert_vis/{batch_idx}', exist_ok=True)
+                np.save(f"testing/pert_vis/{batch_idx}/pert_{i}",  _data_pred_pertubarted.cpu().numpy())
+                np.save(f"testing/pert_vis/{batch_idx}/pert_black{i}",  _data_blurred_pred_pertubarted.cpu().numpy())  
 
             
             _norm_data_pred_pertubarted            = imagenet_normalize(_data_pred_pertubarted)
@@ -287,7 +217,7 @@ def eval(args, mode = None):
             _norm_data_blurred_pred_pertubarted    = imagenet_normalize(_data_blurred_pred_pertubarted)
             _norm_data_blurred_target_pertubarted  = imagenet_normalize(_data_blurred_target_pertubarted)
 
-
+           
             out_data_pred_pertubarted           = model(_norm_data_pred_pertubarted)
             out_data_target_pertubarted         = model(_norm_data_target_pertubarted)
             out_data_blurred_pred_pertubarted   = model(_norm_data_blurred_pred_pertubarted)
@@ -295,9 +225,16 @@ def eval(args, mode = None):
 
 
             pred_probabilities = torch.softmax(out_data_pred_pertubarted, dim=1)
+     
+
             pred_prob = pred_probabilities.data.max(1, keepdim=True)[0].squeeze(1)
             
+    
+            
+          
+            
             pred_class_pertubtated      = out_data_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+           
             pred_class_pertubtated_blur = out_data_blurred_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
 
 
@@ -317,13 +254,13 @@ def eval(args, mode = None):
             tempBlurred = (target == target_class_blurred).type(target.type()).data.cpu().numpy()
 
 
-            isCorrectOnInitPred        = (pred_class == pred_class_pertubtated).type(target.type()).data.cpu().numpy()[0]
-            isCorrectOnInitPredBlurred = (pred_class == pred_class_pertubtated_blur).type(target.type()).data.cpu().numpy()[0]
+            isCorrectOnInitPred        = (pred_class == pred_class_pertubtated).type(target.type()).data.cpu().numpy()
+            isCorrectOnInitPredBlurred = (pred_class == pred_class_pertubtated_blur).type(target.type()).data.cpu().numpy()
             
 
 
-            isCorrect =temp[0]
-            isCorrectBlurred =tempBlurred[0]
+            isCorrect =temp
+            isCorrectBlurred =tempBlurred
 
 
             num_correct_pertub[i, perturb_index:perturb_index+len(temp)] = temp
@@ -334,20 +271,13 @@ def eval(args, mode = None):
             temp = torch.log(target_probs / second_probs).data.cpu().numpy()
             dissimilarity_pertub[i, perturb_index:perturb_index+len(temp)] = temp
             #print(i,batch_idx)
-            correctence_top_precentage[i,batch_idx]               = isCorrectOnInitPred
-            correctence_top_precentage_blurred[i,batch_idx]       = isCorrectOnInitPredBlurred
+            correctence_top_precentage[i, perturb_index:perturb_index+len(temp)]               = isCorrectOnInitPred
+            correctence_top_precentage_blurred[i, perturb_index:perturb_index+len(temp)]       = isCorrectOnInitPredBlurred
 
-            correctence_target_precentage[i,batch_idx]            = isCorrect
-            correctence_target_precentage_blurred[i,batch_idx]    = isCorrectBlurred
-
-
-
+            correctence_target_precentage[i, perturb_index:perturb_index+len(temp)]            = isCorrect
+            correctence_target_precentage_blurred[i, perturb_index:perturb_index+len(temp)]    = isCorrectBlurred
         model_index += len(target)
         perturb_index += len(target)
-        
-    # np.save(os.path.join(args.experiment_dir, 'model_hits.npy'), num_correct_model)
-    # np.save(os.path.join(args.experiment_dir, 'model_dissimilarities.npy'), dissimilarity_model)
-    # np.save(os.path.join(args.experiment_dir, 'perturbations_hits.npy'), num_correct_pertub[:, :perturb_index])
     # np.save(os.path.join(args.experiment_dir, 'perturbations_dissimilarities.npy'), dissimilarity_pertub[:, :perturb_index])
     # np.save(os.path.join(args.experiment_dir, 'perturbations_logit_diff.npy'), logit_diff_pertub[:, :perturb_index])
     # np.save(os.path.join(args.experiment_dir, 'perturbations_prob_diff.npy'), prob_diff_pertub[:, :perturb_index])
@@ -445,12 +375,12 @@ if __name__ == "__main__":
     parser.add_argument('--data-path', type=str, help='')
     args = parser.parse_args()
 
-
+    #args.debug = True
     config.get_config(args, skip_further_testing = True)
     config.set_components_custom_lrp(args)
 
     torch.multiprocessing.set_start_method('spawn')
-    args.debug = True
+
     # PATH variables
     PATH = os.path.dirname(os.path.abspath(__file__)) + '/'
     if args.work_env:

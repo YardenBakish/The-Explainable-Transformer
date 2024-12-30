@@ -213,7 +213,7 @@ python main.py --variant attn_act_sigmoid --auto-save --auto-resume --model deit
 
 
 
-python evaluate_perturbations.py --custom-trained-model <model.pth> --variant <variant> --normalized-pert 0 --fract 0.04 --both --work_env finetuned_models/tmp/work_env --output-dir tmp/pert_results --model transformer_attribution 
+python evaluate_perturbations.py --custom-trained-model /content/relu_checkpoint_14.pth --variant attn_act_relu_no_cp --normalized-pert 0 --fract 1.0 --both --work_env finetuned_models/tmp/work_env --output-dir tmp/pert_results --method custom_lrp
 
 
 

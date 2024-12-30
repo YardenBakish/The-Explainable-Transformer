@@ -234,7 +234,7 @@ class Block(nn.Module):
         mlp_hidden_dim = int(dim * mlp_ratio)
 
         self.norm1 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
-        if op == 1 and less_attention == True:
+        if op == True and less_attention == True:
              self.attn = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, 
                        drop=drop, 
                        isWithBias = isWithBias, 
@@ -253,7 +253,7 @@ class Block(nn.Module):
         
         self.norm2 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
         
-        if op == 1 and less_attention == False:
+        if op == True and less_attention == False:
               self.mlp = Attention(
                 dim, num_heads  = num_heads, 
                 qkv_bias        = qkv_bias, 
@@ -339,7 +339,8 @@ class VisionTransformer(nn.Module):
                 activation = GELU,
                 attn_activation = Softmax(dim=-1),
                 last_norm       = LayerNorm,
-                less_attention = True):
+                less_attention = True,
+                ratio          = 2):
         
         super().__init__()
         print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -354,8 +355,9 @@ class VisionTransformer(nn.Module):
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         blocks_lst = []
-        op = 0
+      
         for i in range(depth):
+           op = ((i % ratio) != 0)
            blocks_lst.append(Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
                 drop=drop_rate, attn_drop=attn_drop_rate,         
@@ -364,7 +366,7 @@ class VisionTransformer(nn.Module):
                 layer_norm      = layer_norm,
                 activation      = activation,
                 attn_activation = attn_activation, op = op, less_attention = less_attention)) 
-           op = 1 - op
+        
         self.blocks = nn.ModuleList(
             blocks_lst)
 
@@ -558,6 +560,7 @@ def deit_tiny_patch16_224(pretrained=False,
                           attn_activation = Softmax(dim=-1) ,
                           last_norm       = LayerNorm,
                           less_attention  = True,
+                          ratio           = 2,
                           **kwargs):
 
     print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -570,6 +573,7 @@ def deit_tiny_patch16_224(pretrained=False,
         attn_activation = attn_activation,
         last_norm       = last_norm,
         less_attention  = less_attention,
+        ratio           = ratio,
         **kwargs)
     
     model.default_cfg = _cfg()
@@ -580,6 +584,5 @@ def deit_tiny_patch16_224(pretrained=False,
         )
         model.load_state_dict(checkpoint["model"])
     return model
-
 
 
