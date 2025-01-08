@@ -350,7 +350,8 @@ class VisionTransformer(nn.Module):
                 isWithBias      = isWithBias, 
                 layer_norm      = layer_norm,
                 activation      = activation,
-                attn_activation = attn_activation,
+                attn_activation = Softmax(dim=-1) if (i%2 ==0) else ReluAttention(),
+               
                )
             for i in range(depth)])
 
@@ -421,8 +422,10 @@ class VisionTransformer(nn.Module):
         cam = self.pool.relprop(cam, **kwargs)
      
         cam = self.norm.relprop(cam, **kwargs)
+        i = 0
         for blk in reversed(self.blocks):
-            cam = blk.relprop(cam,cp_rule = cp_rule, **kwargs)
+            cam = blk.relprop(cam,cp_rule = (i%2 ==0), **kwargs)
+            i+=1
 
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
@@ -437,9 +440,6 @@ class VisionTransformer(nn.Module):
         elif method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
             cam = cam[:, 1:]
-            #dont forget to change cp and change normalization layers
-            #cam = cam.clamp(min=0)
-
             cam = self.patch_embed.relprop(cam, **kwargs)
             # sum on channels
             cam = cam.sum(dim=1)

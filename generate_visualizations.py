@@ -134,7 +134,7 @@ def compute_saliency_and_save(args):
 
                 # Res = Res - Res.mean()
 
-            elif args.method == 'transformer_attribution':
+            elif args.method == 'transformer_attribution' or  args.method == 'attribution_with_detach':
                 #output = model_LRP(data)
                 #print(f"target: {target}")
                 #print(f"predicted:  {output.data.topk(5, dim=1)[1][0].tolist() }")
@@ -211,7 +211,7 @@ if __name__ == "__main__":
                         help='')
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
-                        choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'lrp_last_layer',
+                        choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
                                  'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                         help='')
 

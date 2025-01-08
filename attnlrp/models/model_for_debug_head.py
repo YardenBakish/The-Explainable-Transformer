@@ -11,6 +11,8 @@ from baselines.ViT.weight_init import trunc_normal_
 from baselines.ViT.layer_helpers import to_2tuple
 from functools import partial
 import inspect
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 def safe_call(func, **kwargs):
     # Get the function's signature
@@ -98,6 +100,7 @@ class Attention(nn.Module):
        
                 attn_activation = Softmax(dim=-1), 
                 isWithBias      = True, 
+                depth = 0,
              ):
         
         super().__init__()
@@ -109,7 +112,7 @@ class Attention(nn.Module):
         self.head_dim = head_dim
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = head_dim ** -0.5
-   
+        self.depth = depth
 
         # A = Q*K^T
         self.matmul1 = einsum('bhid,bhjd->bhij')
@@ -257,7 +260,7 @@ class Attention(nn.Module):
 
 
         #done only for hook
-       # tmp = self.v_proj(x)
+        tmp = self.v_proj(x)
    
         #t = x.clone()
         tmp = self.qkv_h1(x)
@@ -324,6 +327,114 @@ class Attention(nn.Module):
         #attn_replica[other_patches_mask] += mean_other_patches_mask
 #
         #attn = attn_replica
+
+
+
+        '''
+        token_norms = torch.norm(v, p=2, dim=-1)  # [batch_size, num_heads, num_tokens]
+    
+        # Find threshold for each head separately
+        thresholds = torch.quantile(token_norms, 98/100, dim=-1, keepdim=True)  # [batch_size, num_heads, 1]
+
+        # Create masks for high and low magnitude tokens
+        high_magnitude_mask = token_norms > thresholds  # [batch_size, num_heads, num_tokens]
+        low_magnitude_mask = ~high_magnitude_mask
+
+        # Expand masks to match v_proj dimensions
+        high_magnitude_mask = high_magnitude_mask.unsqueeze(-1).expand_as(v)
+        low_magnitude_mask = low_magnitude_mask.unsqueeze(-1).expand_as(v)
+
+        # Create modified version of v_proj
+        v_proj_balanced = v.clone()
+
+        # Reduce high magnitude tokens
+        v_proj_balanced[high_magnitude_mask] *= 0.01
+
+        # Increase low magnitude tokens
+        v_proj_balanced[low_magnitude_mask] *= 4.2
+
+        v = v_proj_balanced
+        
+        '''
+
+
+        '''
+        attention_maps = attn.squeeze(0).data.cpu().numpy()
+    
+        # Create a heatmap for each head
+        for head_idx in range(attention_maps.shape[0]):
+            plt.figure(figsize=(10, 8))
+
+            # Create heatmap using seaborn
+            sns.heatmap(
+                attention_maps[head_idx],
+                cmap='viridis',
+                cbar=True,
+                xticklabels=False,
+                yticklabels=False
+            )
+
+            plt.title(f'Attention Map - Head {head_idx}')
+
+            # Save the figure
+            save_path =  f'/content/The-Explainable-Transformer/testing_vis3/attn_{self.depth}_{head_idx}.png'
+            plt.savefig(save_path, bbox_inches='tight', dpi=300)
+            plt.close()
+        '''
+        '''
+        if 10>= self.depth >= 1:
+          for head in range(3):
+            column_norms = torch.norm(attn[:, head, :, :], p=2, dim=1)
+            _, top_k_indices = torch.topk(column_norms, k=5, dim=1)
+            for batch in range(1):
+              attn[batch, head, :, top_k_indices[batch]] = 0
+        '''
+
+
+
+        '''
+
+        if 10>= self.depth >=1  :   
+          l2_norms = torch.norm(attn, dim=2)  # [B, H, N]
+          # Random number of patches per batch and head
+          num_patches = torch.randint(2, 6, (b, h), device=attn.device)
+          mask = torch.ones_like(attn)
+          _, top_indices = torch.topk(l2_norms, k=5, dim=-1)  # [B, H, 5]
+          batch_idx = torch.arange(b, device=attn.device)[:, None, None]
+          head_idx = torch.arange(h, device=attn.device)[None, :, None]
+
+          # Create mask using selected number of patches
+          for i in range(5):
+              patch_mask = (i < num_patches[:, :, None]).to(attn.dtype)
+              mask[batch_idx, head_idx, :, top_indices[:, :, i]] *= (1 - patch_mask)
+
+          # Apply mask and rescale
+          attn = attn * mask
+        '''
+
+
+        '''
+            if 10>= self.depth >=1  :   
+                l2_norms = torch.norm(attn, dim=2)  # [B, H, N]
+                # Random number of patches per batch and head
+                num_patches = torch.randint(1, 6, (b, h), device=attn.device)
+                mask = torch.ones_like(attn)
+                _, top_indices = torch.topk(l2_norms, k=5, dim=-1)  # [B, H, 5]
+                batch_idx = torch.arange(b, device=attn.device)[:, None, None]
+                head_idx = torch.arange(h, device=attn.device)[None, :, None]
+
+                mask = torch.ones_like(attn)
+ 
+                patch_range = torch.arange(5, device=attn.device)
+                patch_mask = (patch_range[None, None, :] < num_patches[:, :, None])  # [B, H, 5]
+    
+                for i in range(5):
+                    current_indices = top_indices[:, :, i]  # [B, H]
+                    mask[batch_idx.squeeze(-1), head_idx.squeeze(-1), :, current_indices] *= (1 - patch_mask[:, :, i:i+1].to(attn.dtype))
+                            # Apply mask and rescale
+                attn = attn * mask
+        '''
+
         attn = self.attn_drop(attn)
 
         self.save_attn(attn)
@@ -400,8 +511,8 @@ class Attention(nn.Module):
       
 
         v_proj_map = cam_qkv[:,:,384:]
-        print(cam_qkv_h1.shape)
-        if True:
+       
+        if False:
             return self.qkv_h2.relprop(cam_qkv_h2, **kwargs) 
 
         
@@ -418,6 +529,7 @@ class Block(nn.Module):
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
                 attn_activation = Softmax(dim=-1),
+                depth = 0
              ):
         super().__init__()
         print(f"Inside block with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -430,6 +542,7 @@ class Block(nn.Module):
             proj_drop       = drop, 
             attn_activation = attn_activation,
             isWithBias      = isWithBias,
+            depth = depth,
           
            )
         
@@ -534,6 +647,7 @@ class VisionTransformer(nn.Module):
                 layer_norm      = layer_norm,
                 activation      = activation,
                 attn_activation = attn_activation,
+                depth = i
                )
             for i in range(depth)])
 
@@ -581,6 +695,13 @@ class VisionTransformer(nn.Module):
         B = x.shape[0]
         x = self.patch_embed(x)
 
+        '''
+        token_norms = torch.norm(x, p=2, dim=-1)
+        _, top_k_indices = torch.topk(token_norms, k=5, dim=1)
+
+        x[:,top_k_indices[0,1],:] *= 0.1
+        '''
+
         cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.add([x, self.pos_embed])
@@ -604,7 +725,7 @@ class VisionTransformer(nn.Module):
         cam = self.pool.relprop(cam, **kwargs)
      
         cam = self.norm.relprop(cam, **kwargs)
-        print(f"cam shape start: {cam.shape}")
+        #print(f"cam shape start: {cam.shape}")
 
         count = 0
         for blk in reversed(self.blocks):
@@ -612,7 +733,7 @@ class VisionTransformer(nn.Module):
             if count > thr:
               break
             cam = blk.relprop(cam,cp_rule = cp_rule, **kwargs)
-            print(f"cam shape: {cam.shape}")
+            #print(f"cam shape: {cam.shape}")
 
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
@@ -715,6 +836,9 @@ def deit_tiny_patch16_224(pretrained=False,
                           activation = GELU,
                           attn_activation = Softmax(dim=-1) ,
                           last_norm       = LayerNorm,
+                          attn_drop_rate  = 0.,
+                          FFN_drop_rate   = 0.,
+                          projection_drop_rate = 0.,
                         
                           **kwargs):
 
@@ -727,6 +851,7 @@ def deit_tiny_patch16_224(pretrained=False,
         activation      = activation,
         attn_activation = attn_activation,
         last_norm       = last_norm,
+  
     
         **kwargs)
     
@@ -741,3 +866,30 @@ def deit_tiny_patch16_224(pretrained=False,
 
 
 
+
+
+'''
+   def calculate_norm_disparity_loss(self):
+        """
+        Calculate regularization loss that penalizes patches with much higher norms than others.
+        Specifically targets outlier patches with unusually high L2 norms.
+        """
+        if self.patch_embeddings is None:
+            return 0.0
+        
+        # Calculate L2 norms for each patch
+        patch_norms = torch.norm(self.patch_embeddings, p=2, dim=-1)  # [B, N]
+        
+        # Find the threshold norm value at the specified percentile
+        threshold = torch.quantile(patch_norms, 95/100.0, dim=-1, keepdim=True)
+        
+        # Calculate how much each patch's norm exceeds the threshold
+        excess_norms = torch.relu(patch_norms - threshold)
+        
+        # Square the excess to more heavily penalize larger deviations
+        loss = torch.mean(excess_norms ** 2)
+        
+        return 0.2 * loss
+
+
+'''

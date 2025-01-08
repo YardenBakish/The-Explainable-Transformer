@@ -30,17 +30,112 @@ from models.variant_proposed_solution.variant_proposed_solution_train import dei
 from models.variant_proposed_solution.variant_proposed_solution import deit_tiny_patch16_224 as variant_proposed_solution
 
 
+from models.variant_relu_softmax.variant_relu_softmax_train import deit_tiny_patch16_224 as variant_relu_softmax_train
+from models.variant_relu_softmax.variant_relu_softmax import deit_tiny_patch16_224 as variant_relu_softmax
 
 
+from models.dropout.model_dropout_train import deit_tiny_patch16_224 as model_dropout_train
+from models.dropout.model_dropout import deit_tiny_patch16_224 as model_dropout
+
+from models.variant_patch_embed.variant_patch_embed_train import deit_tiny_patch16_224 as variant_patch_embed_train
 
 #TODO: add support to remaining variants instead of keeping multiple documents with redundant code
 
 def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
 
+    
+    if 'variant_patch_embed' in args.variant :
+        if hooks:
+            exit(1)
+        else:
+            return variant_patch_embed_train(
+            isWithBias           = args.model_components["isWithBias"],
+            layer_norm           = args.model_components["norm"],
+            last_norm            = args.model_components["last_norm"],
+            attn_drop_rate       = args.model_components["attn_drop_rate"],
+            FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+            projection_drop_rate = args.model_components['projection_drop_rate'],
+
+
+            activation      = args.model_components["activation"],
+            attn_activation = args.model_components["attn_activation"],
+            num_classes     = args.nb_classes,
+        )
+
+    if args.variant == 'variant_relu_softmax':
+        if hooks:
+            return variant_relu_softmax(
+            isWithBias           = args.model_components["isWithBias"],
+            layer_norm           = args.model_components["norm"],
+            last_norm            = args.model_components["last_norm"],
+            attn_drop_rate       = args.model_components["attn_drop_rate"],
+            FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+            projection_drop_rate = args.model_components['projection_drop_rate'],
+
+
+            activation      = args.model_components["activation"],
+            attn_activation = args.model_components["attn_activation"],
+            num_classes     = args.nb_classes,
+            )
+        else:
+            return variant_relu_softmax_train(
+            isWithBias           = args.model_components["isWithBias"],
+            layer_norm           = args.model_components["norm"],
+            last_norm            = args.model_components["last_norm"],
+            attn_drop_rate       = args.model_components["attn_drop_rate"],
+            FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+            projection_drop_rate = args.model_components['projection_drop_rate'],
+
+
+            activation      = args.model_components["activation"],
+            attn_activation = args.model_components["attn_activation"],
+            num_classes     = args.nb_classes,
+        )
+
+
+
+    if 'dropout' in args.variant and 'variant_dropout' not in args.variant:
+        remove_most_important = True if args.variant == 'dropout_remove_most_important' else False
+        if hooks:
+            return model_dropout(
+                isWithBias           = args.model_components["isWithBias"],
+                layer_norm           = args.model_components["norm"],
+                last_norm            = args.model_components["last_norm"],
+                attn_drop_rate       = args.model_components["attn_drop_rate"],
+                FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+                projection_drop_rate = args.model_components['projection_drop_rate'],
+
+
+                activation      = args.model_components["activation"],
+                attn_activation = args.model_components["attn_activation"],
+                num_classes     = args.nb_classes,
+            )
+
+            
+        else:
+            return model_dropout_train(
+                isWithBias           = args.model_components["isWithBias"],
+                layer_norm           = args.model_components["norm"],
+                last_norm            = args.model_components["last_norm"],
+                attn_drop_rate       = args.model_components["attn_drop_rate"],
+                FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+                projection_drop_rate = args.model_components['projection_drop_rate'],
+
+
+                activation      = args.model_components["activation"],
+                attn_activation = args.model_components["attn_activation"],
+                num_classes     = args.nb_classes,
+
+                layer_drop_rate  = args.model_components["layer_drop_rate"],
+                head_drop_rate = args.model_components["head_drop_rate"],
+                remove_most_important = remove_most_important
+            )
+            
+
 
     if args.variant == "variant_proposed_solution":
         if hooks:
-            return variant_proposed_solution(
+            return variant_model_simplified_block(
                 isWithBias      = args.model_components["isWithBias"],
                 layer_norm      = args.model_components["norm"],
                 last_norm       = args.model_components["last_norm"],
@@ -50,7 +145,7 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
                 num_classes     = args.nb_classes,
             )
         else:
-            return variant_proposed_solution_train(
+            return variant_model_simplified_block_train(
                 isWithBias      = args.model_components["isWithBias"],
                 layer_norm      = args.model_components["norm"],
                 last_norm       = args.model_components["last_norm"],
@@ -198,7 +293,7 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
    
    
    
-    if args.variant == 'variant_layer_scale':
+    if 'layer_scale' in args.variant:
         if hooks:
             return model_variant_layer_scale(
             isWithBias      = args.model_components["isWithBias"],
@@ -251,11 +346,12 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
 
     if hooks:
         return vit_LRP(
-            isWithBias      = args.model_components["isWithBias"],
-            layer_norm      = args.model_components["norm"],
-            last_norm       = args.model_components["last_norm"],
-            attn_drop_rate  = args.model_components["attn_drop_rate"],
-            FFN_drop_rate   = args.model_components["FFN_drop_rate"],
+            isWithBias           = args.model_components["isWithBias"],
+            layer_norm           = args.model_components["norm"],
+            last_norm            = args.model_components["last_norm"],
+            attn_drop_rate       = args.model_components["attn_drop_rate"],
+            FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+            projection_drop_rate = args.model_components['projection_drop_rate'],
 
 
             activation      = args.model_components["activation"],
@@ -264,11 +360,13 @@ def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
         )
     else:
         return vit_LRP_train(
-            isWithBias      = args.model_components["isWithBias"],
-            layer_norm      = args.model_components["norm"],
-            last_norm       = args.model_components["last_norm"],
-            attn_drop_rate  = args.model_components["attn_drop_rate"],
-            FFN_drop_rate   = args.model_components["FFN_drop_rate"],
+            isWithBias           = args.model_components["isWithBias"],
+            layer_norm           = args.model_components["norm"],
+            last_norm            = args.model_components["last_norm"],
+            attn_drop_rate       = args.model_components["attn_drop_rate"],
+            FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+            projection_drop_rate = args.model_components['projection_drop_rate'],
+
 
             activation      = args.model_components["activation"],
             attn_activation = args.model_components["attn_activation"],

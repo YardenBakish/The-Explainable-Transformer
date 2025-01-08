@@ -12,7 +12,7 @@ __all__ = ['forward_hook', 'Clone', 'Add', 'Cat', 'ReLU', 'GELU', 'Dropout', 'Ba
            'Sparsemax',
            'RepBN',
            'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d', 
-           'CustomLRPLayerNorm', 'CustomLRPRMSNorm', 'NormalizedReluAttention']
+           'CustomLRPLayerNorm', 'CustomLRPRMSNorm', 'NormalizedReluAttention', 'CustomLRPBatchNorm']
 
 
 def _stabilize(input, epsilon=1e-6, inplace=False):
@@ -274,7 +274,7 @@ class CustomLRPLayerNorm(nn.LayerNorm, RelProp):
 
 
 
-
+'''
 class CustomLRPBatchNorm(nn.BatchNorm1d, RelProp):
     def forward(self, x):
         with torch.enable_grad():
@@ -316,6 +316,55 @@ class CustomLRPBatchNorm(nn.BatchNorm1d, RelProp):
         relevance_norm = R[0] / _stabilize(Z, self.eps, False)
         grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
         return grads*self.X
+
+'''
+
+
+
+class CustomLRPBatchNorm(nn.BatchNorm1d, RelProp):
+    def forward(self, x):
+      with torch.enable_grad():
+
+        mean = self.running_mean
+        var = self.running_var
+
+        std = (var.view(1, -1, 1) + self.eps).sqrt()
+        x_normalized = (x - mean.view(1, -1, 1)) / std
+
+        # Scale and shift
+        if self.weight is not None:
+          x_normalized = x_normalized * self.weight.view(1, -1, 1)
+        if self.bias is not None:
+          x_normalized = x_normalized + self.bias.view(1, -1, 1)
+          # Store for LRP
+      self.X = x
+      self.output11 = x_normalized
+
+      return x_normalized
+   
+    def relprop(self, R, alpha):
+
+     
+        Z = self.forward(self.X)
+        var = self.running_var
+
+        #std = (var.view(1, -1, 1) + self.eps).sqrt()
+        #print(std.shape)
+
+        #w = self.weight.unsqueeze(0).unsqueeze(-1)
+        #print(w.shape)
+
+        relevance_norm = R 
+      
+        grads= torch.autograd.grad(Z, self.X, relevance_norm)[0]
+        return (grads*self.X) 
+
+
+
+
+
+
+
 
 
 class CustomLRPRMSNorm(nn.RMSNorm, RelProp):
@@ -392,6 +441,7 @@ class Linear(nn.Linear, RelProp):
 
 
 
+'''
 class NormalizedReluAttention(nn.Module):
     def __init__(self, n= 197):
         super(NormalizedReluAttention, self).__init__()
@@ -403,12 +453,41 @@ class NormalizedReluAttention(nn.Module):
       row_sums = x.sum(dim=3, keepdim=True)  
       normalized_attention_map = x / (row_sums + 1e-6)
 
-      return normalized_attention_map * self.seqlen
+      return normalized_attention_map # * self.seqlen
     
     def relprop(self, cam, **kwargs):
         return self.act_variant.relprop(cam, **kwargs)
     
+'''
+
+
+
+class NormalizedReluAttention(nn.Module):
+    def __init__(self, n= 197):
+        super(NormalizedReluAttention, self).__init__()
+        self.seqlen = n ** -1
+        self.act_variant = ReLU()
     
+    def forward(self,x):
+      with torch.enable_grad():
+        self.X  = x
+        x = self.act_variant(x)
+        row_sums = x.sum(dim=3, keepdim=True)  
+        normalized_attention_map = x / (row_sums + 1e-6).detach()
+        self.Y = normalized_attention_map
+      return normalized_attention_map # * self.seqlen
+    
+    def relprop(self, cam, **kwargs):
+        Z = self.forward(self.X)
+        relevance_norm = cam / _stabilize(Z, 1e-6, False)
+        grads= torch.autograd.grad(self.Y, self.X, relevance_norm)[0]
+
+        return grads*self.X
+    
+
+
+
+
 
 class WeightNormLinear(Linear):
   def __init__(self, in_features, out_features, bias=True):
@@ -516,10 +595,10 @@ class NormalizedConv2d(Conv2d):
 
 
 class RepBN(nn.Module):
-    def __init__(self, normalized_shape):
+    def __init__(self, normalized_shape, batchLayer = BatchNorm1D ):
         super(RepBN, self).__init__()
         self.alpha = nn.Parameter(torch.ones(1))
-        self.bn = BatchNorm1D(normalized_shape)
+        self.bn = batchLayer(normalized_shape)
         self.add = Add()
         self.clone = Clone()
 
@@ -547,7 +626,6 @@ class RepBN(nn.Module):
         cam = self.clone.relprop((cam1, cam2), **kwargs)
 
         return cam
-
 
 
 class UncenteredLayerNorm(RelProp):

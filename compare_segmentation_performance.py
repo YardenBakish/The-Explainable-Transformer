@@ -32,8 +32,10 @@ import torch.nn.functional as F
 
 plt.switch_backend('agg')
 
-NUM_STEPS = 5
 
+#changehere
+#NUM_STEPS = 5
+NUM_STEPS = 8
 # hyperparameters
 num_workers = 0
 batch_size = 1
@@ -355,8 +357,11 @@ def eval_batch(image, labels, evaluator, index):
     for i in range(NUM_STEPS):
 
 
-    
-        ret =  Res.mean() + (i* 0.2)*(Res.max() - Res.mean())
+        #changehere
+        #ret =  Res.mean() + (i* 0.2)*(Res.max() - Res.mean())
+      
+        ret =  Res.mean() / ((i+1) * Res.std() + 1e-10 )
+
 
         Res_1 = Res.gt(ret).type(Res.type())
         Res_0 = Res.le(ret).type(Res.type())

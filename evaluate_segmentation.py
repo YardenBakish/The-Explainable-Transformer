@@ -65,8 +65,8 @@ parser.add_argument('--arc', type=str, default='vgg', metavar='N',
                     help='Model architecture')
 parser.add_argument('--custom-trained-model', type=str, 
                     help='Model path')
+parser.add_argument('--threshold-type', choices = ['mean', 'otsu', 'MoV'], required = True)
 
-parser.add_argument('--otsu-thr', action='store_true')
 
 
 parser.add_argument('--variant', default = 'basic', help="")
@@ -82,7 +82,7 @@ parser.add_argument('--train_dataset', type=str, default='imagenet', metavar='N'
                     help='Testing Dataset')
 parser.add_argument('--method', type=str,
                     default='grad_rollout',
-                    choices=[ 'rollout', 'lrp','transformer_attribution', 'full_lrp', 'lrp_last_layer',
+                    choices=[ 'rollout', 'lrp','transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
                               'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                     help='')
 parser.add_argument('--thr', type=float, default=0.,
@@ -288,7 +288,7 @@ def eval_batch(image, labels, evaluator, index):
         Res = orig_lrp.generate_LRP(image.cuda(), method="full", cp_rule = args.cp_rule).reshape(batch_size, 1, 224, 224)
     
     # segmentation test for our method
-    elif args.method == 'transformer_attribution':
+    elif args.method == 'transformer_attribution' or  args.method == 'attribution_with_detach':
         Res = lrp.generate_LRP(image.cuda(), start_layer=1, method="transformer_attribution", cp_rule = args.cp_rule).reshape(batch_size, 1, 14, 14)
     
     # segmentation test for the partial LRP baseline (last attn layer)
@@ -312,7 +312,15 @@ def eval_batch(image, labels, evaluator, index):
     # threshold between FG and BG is the mean    
     Res = (Res - Res.min()) / (Res.max() - Res.min())
 
-    ret =  otsu_threshold(Res.cpu().detach().numpy()) if args.otsu_thr else Res.mean()
+    if args.threshold_type == 'otsu':
+        ret =  otsu_threshold(Res.cpu().detach().numpy())
+    elif args.threshold_type == 'MoV':
+        ret =   Res.mean() / (3* Res.std() + 1e-10 )
+    else:
+        ret = Res.mean()
+
+    
+    #Res1.mean() / (3* Res1.std() + 1e-10 )
 
     Res_1 = Res.gt(ret).type(Res.type())
     Res_0 = Res.le(ret).type(Res.type())

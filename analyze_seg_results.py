@@ -14,7 +14,7 @@ def parse_args():
  
 
     parser.add_argument('--gen-latex', action='store_true')
-    parser.add_argument('--otsu-thr', action='store_true')
+    parser.add_argument('--threshold-type', choices = ['mean', 'otsu', 'MoV'], required = True)
     parser.add_argument('--variant', default = 'basic',  type=str, help="")
   
 
@@ -34,7 +34,7 @@ def parse_args():
                         help='')
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
-                        choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'lrp_last_layer',
+                        choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
                                  'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                         help='')
 
@@ -65,7 +65,15 @@ MAPPER_HELPER = {
    'norm batch':           'RepBN (BatchNorm)',
    'custom_lrp': 'lrp',
    'transformer_attribution': 'transformer attribution',
-   'variant weight normalization': 'WeightNormalization'
+   'variant weight normalization': 'WeightNormalization',
+   'variant diff attn': 'DiffTransformer',
+   'variant diff attn relu': 'DiffTransformer w/ Relu',
+   'attn act relu pos' : 'ReluAttention w/ Softplus',
+   'variant registers': 'DeiT-tiny w/ registers',
+   'variant relu softmax': 'Relu m.w/ Softmax',
+   'attn act relu normalized': 'Propotional Relu',
+   'act relu': 'Relu Act.',
+   'variant layer scale relu attn': 'LayerScale w/ ReluAttention',
 }
 
 
@@ -153,9 +161,8 @@ def run_segmentation(args):
     
     variant          = f'{args.variant}'
     eval_seg_cmd += f' --variant {args.variant}'
-
-    if args.otsu_thr:
-       eval_seg_cmd += " --otsu-thr "
+    eval_seg_cmd += f' --threshold-type {args.threshold_type} '
+   
   
 
     model_dir = f'{root_dir}/{variant}'
@@ -171,7 +178,7 @@ def run_segmentation(args):
        if filter_epochs(args, int(epoch), variant ) == False:
           continue
        print(f"working on epoch {epoch}")
-       seg_results_dir =  'seg_results_otsu' if args.otsu_thr else 'seg_results'
+       seg_results_dir = 'seg_results' if args.threshold_type == 'mean' else f'seg_results_{args.threshold_type}'
        eval_seg_epoch_cmd = f"{eval_seg_cmd} --output-dir {model_dir}/{seg_results_dir}/res_{epoch}_{suff}"
        eval_seg_epoch_cmd += f" --custom-trained-model {model_dir}/{checkpoint_path}" 
        print(f'executing: {eval_seg_epoch_cmd}')
@@ -225,7 +232,8 @@ def analyze(args):
    root_dir = f"{args.dirs['finetuned_models_dir']}{args.data_set}"
 
    global_lst = []
-   seg_results_dir =  'seg_results_otsu' if args.otsu_thr else 'seg_results'
+   seg_results_dir = 'seg_results' if args.threshold_type == 'mean' else f'seg_results_{args.threshold_type}'
+
 
    for c in choices:
        subdir = f'{root_dir}/{c}/{seg_results_dir}'    

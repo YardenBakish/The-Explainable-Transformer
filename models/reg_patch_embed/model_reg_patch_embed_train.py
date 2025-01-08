@@ -94,8 +94,7 @@ class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False,attn_drop=0., proj_drop=0., 
        
                 attn_activation = Softmax(dim=-1), 
-                isWithBias      = True, 
-             ):
+                isWithBias      = True):
         
         super().__init__()
 
@@ -113,18 +112,6 @@ class Attention(nn.Module):
         self.matmul2 = einsum('bhij,bhjd->bhid')
 
         self.qkv = Linear(dim, dim * 3, bias=qkv_bias)
-        
-
-      
-       
-        v_weight = self.qkv.weight[dim*2:dim*3].view(dim, dim)
-        self.v_proj = Linear(dim, dim, bias=qkv_bias)
-        self.v_proj.weight.data = v_weight
-
-        if isWithBias:
-            v_bias   = self.qkv.bias[dim*2:dim*3]
-            self.v_proj.bias.data = v_bias
-
         self.attn_drop = Dropout(attn_drop)
         self.proj = Linear(dim, dim, bias = isWithBias)
         self.proj_drop = Dropout(proj_drop)
@@ -170,11 +157,6 @@ class Attention(nn.Module):
         b, n, _, h = *x.shape, self.num_heads
         qkv = self.qkv(x)
         q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=h)
-        
-        #done only for hook
-        tmp = self.v_proj(x)
-        #######
-
 
         self.save_v(v)
 
@@ -184,7 +166,7 @@ class Attention(nn.Module):
         attn = self.attn_drop(attn)
 
         self.save_attn(attn)
-        attn.register_hook(self.save_attn_gradients)
+        #attn.register_hook(self.save_attn_gradients)
 
         out = self.matmul2([attn, v])
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -193,7 +175,7 @@ class Attention(nn.Module):
         out = self.proj_drop(out)
         return out
 
-    def relprop(self, cam = None,cp_rule = False, **kwargs):
+    def relprop(self, cam, **kwargs):
         cam = self.proj_drop.relprop(cam, **kwargs)
         cam = self.proj.relprop(cam, **kwargs)
         cam = rearrange(cam, 'b n (h d) -> b h n d', h=self.num_heads)
@@ -217,23 +199,16 @@ class Attention(nn.Module):
 
         cam_qkv = rearrange([cam_q, cam_k, cam_v], 'qkv b h n d -> b n (qkv h d)', qkv=3, h=self.num_heads)
 
-
-        v_proj_map = cam_qkv[:,:,384:]
-        
-        if cp_rule:
-            return self.v_proj.relprop(v_proj_map, **kwargs) 
-        else:
-            return self.qkv.relprop(cam_qkv, **kwargs)
+        return self.qkv.relprop(cam_qkv, **kwargs)
 
 
 class Block(nn.Module):
 
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0., projection_drop_rate =0.,  
+    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0., projection_drop_rate = 0.,  
                 isWithBias = True,
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
-                attn_activation = Softmax(dim=-1),
-             ):
+                attn_activation = Softmax(dim=-1) ):
         super().__init__()
         print(f"Inside block with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
 
@@ -245,7 +220,6 @@ class Block(nn.Module):
             proj_drop       = projection_drop_rate, 
             attn_activation = attn_activation,
             isWithBias      = isWithBias,
-          
            )
         
         self.norm2 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
@@ -272,7 +246,7 @@ class Block(nn.Module):
         x = self.add2([x1, self.mlp(self.norm2(x2))])
         return x
 
-    def relprop(self, cam = None, cp_rule = False, **kwargs):
+    def relprop(self, cam, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
         cam2 = self.mlp.relprop(cam2, **kwargs)
        
@@ -280,7 +254,7 @@ class Block(nn.Module):
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
-        cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
+        cam2 = self.attn.relprop(cam2, **kwargs)
       
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
@@ -326,8 +300,7 @@ class VisionTransformer(nn.Module):
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
                 attn_activation = Softmax(dim=-1),
-                last_norm       = LayerNorm,
-               ):
+                last_norm       = LayerNorm,):
         
         super().__init__()
         print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -338,20 +311,18 @@ class VisionTransformer(nn.Module):
                 img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
         self.isWithBias = isWithBias
-
+        self.actLoss = Softmax(dim=-1)
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.blocks = nn.ModuleList([
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
-                drop=drop_rate, attn_drop=attn_drop_rate, 
-                projection_drop_rate = projection_drop_rate,        
+                drop=drop_rate, attn_drop=attn_drop_rate, projection_drop_rate = projection_drop_rate,         
            
                 isWithBias      = isWithBias, 
                 layer_norm      = layer_norm,
                 activation      = activation,
-                attn_activation = attn_activation,
-               )
+                attn_activation = attn_activation,)
             for i in range(depth)])
 
         self.norm = safe_call(last_norm, normalized_shape= embed_dim, bias = isWithBias ) 
@@ -390,19 +361,46 @@ class VisionTransformer(nn.Module):
                 nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    @property
+    @torch.jit.ignore
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
+
+
+    def calculate_norm_disparity_loss(self):
+        """
+        Calculate regularization loss that penalizes patches with much higher norms than others.
+        Specifically targets outlier patches with unusually high L2 norms.
+        """
+        if self.patch_embeddings is None:
+            return 0.0
+        
+        # Calculate L2 norms for each patch
+        patch_norms = torch.norm(self.patch_embeddings, p=2, dim=-1)  # [B, N]
+        patch_norms = self.actLoss(patch_norms)  # [B, N]
+        
+        # Find the threshold norm value at the specified percentile
+        threshold = torch.quantile(patch_norms, 92/100.0, dim=-1, keepdim=True)
+        
+        # Calculate how much each patch's norm exceeds the threshold
+        excess_norms = torch.relu(patch_norms - threshold)
+        
+        # Square the excess to more heavily penalize larger deviations
+        loss = torch.mean(excess_norms ** 2)
+        
+        return  100 *loss
 
     def forward(self, x):
         B = x.shape[0]
         x = self.patch_embed(x)
 
+        self.patch_embeddings = x
+        norm_loss = self.calculate_norm_disparity_loss()
+
         cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.add([x, self.pos_embed])
 
-        x.register_hook(self.save_inp_grad)
+        #x.register_hook(self.save_inp_grad)
 
         for blk in self.blocks:
             x = blk(x)
@@ -411,9 +409,10 @@ class VisionTransformer(nn.Module):
         x = self.pool(x, dim=1, indices=torch.tensor(0, device=x.device))
         x = x.squeeze(1)
         x = self.head(x)
-        return x
+        if self.training:
+            return x, norm_loss
 
-    def relprop(self, cam=None,method="transformer_attribution", cp_rule = False, is_ablation=False, start_layer=0, **kwargs):
+    def relprop(self, cam=None,method="transformer_attribution", is_ablation=False, start_layer=0, **kwargs):
         # print(kwargs)
         # print("conservation 1", cam.sum())
         cam = self.head.relprop(cam, **kwargs)
@@ -422,24 +421,14 @@ class VisionTransformer(nn.Module):
      
         cam = self.norm.relprop(cam, **kwargs)
         for blk in reversed(self.blocks):
-            cam = blk.relprop(cam,cp_rule = cp_rule, **kwargs)
+            cam = blk.relprop(cam, **kwargs)
 
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
 
-        if method   == "custom_lrp":
-            cam = cam[0, 1:, :]
-            #FIXME: slight tradeoff between noise and intensity of important features
-            #cam = cam.clamp(min=0)
-            norms = torch.norm(cam, p=2, dim=1)  # Shape: [196]
-            return norms
-
-        elif method == "full":
+        if method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
             cam = cam[:, 1:]
-            #dont forget to change cp and change normalization layers
-            #cam = cam.clamp(min=0)
-
             cam = self.patch_embed.relprop(cam, **kwargs)
             # sum on channels
             cam = cam.sum(dim=1)
@@ -531,7 +520,6 @@ def deit_tiny_patch16_224(pretrained=False,
                           attn_drop_rate  = 0.,
                           FFN_drop_rate   = 0.,
                           projection_drop_rate = 0.,
-                        
                           **kwargs):
 
     print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -546,7 +534,6 @@ def deit_tiny_patch16_224(pretrained=False,
         attn_drop_rate  = attn_drop_rate,
         drop_rate       = FFN_drop_rate,
         projection_drop_rate = projection_drop_rate,
-    
         **kwargs)
     
     model.default_cfg = _cfg()

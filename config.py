@@ -9,6 +9,8 @@ DEFAULT_MODEL = {
     'attn_activation'      : Softmax(dim=-1),
     'attn_drop_rate'       : 0.,
     'FFN_drop_rate'        : 0.,
+    'projection_drop_rate' : 0.,
+
 }
 
 
@@ -25,51 +27,60 @@ DEFAULT_PATHS = {
 
 
 MODEL_VARIANTS = {
-            'basic'                :  DEFAULT_MODEL.copy(),
-            'bias_ablation'        :  {**DEFAULT_MODEL, 'isWithBias': False, },
+            'basic'                          :  DEFAULT_MODEL.copy(),
+            'bias_ablation'                  :  {**DEFAULT_MODEL, 'isWithBias': False, },
             #Attention Activation Variants
-            'attn_act_relu'        :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
-            'attn_act_relu_normalized'        :  {**DEFAULT_MODEL, 'attn_activation': NormalizedReluAttention()},
+            'attn_act_relu'                  :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
+            'attn_act_relu_normalized'       :  {**DEFAULT_MODEL, 'attn_activation': NormalizedReluAttention()},
+            'attn_act_relu_no_cp'            :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
+            'variant_relu_softmax'           :  {**DEFAULT_MODEL,},
+            'attn_act_sigmoid'               :  {**DEFAULT_MODEL, 'attn_activation': SigmoidAttention()},
+            'attn_act_sparsemax'             :  {**DEFAULT_MODEL, 'attn_activation': Sparsemax(dim=-1)},
+            'attn_variant_light'             :  {**DEFAULT_MODEL,},
+            'attn_act_relu_pos'              :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention(), 'activation': Softplus(), 'isWithBias': False, },
+            'variant_layer_scale_relu_attn'  :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
 
-            'attn_act_relu_no_cp'        :  {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
-
-            'attn_act_sigmoid'     :  {**DEFAULT_MODEL, 'attn_activation': SigmoidAttention()},
-            'attn_act_sparsemax'   :  {**DEFAULT_MODEL, 'attn_activation': Sparsemax(dim=-1)},
-            'attn_variant_light'   :  {**DEFAULT_MODEL,},
             #Activation Variants
-            'act_softplus'         :  {**DEFAULT_MODEL, 'activation': Softplus()},
+            'act_softplus'                   :  {**DEFAULT_MODEL, 'activation': Softplus()},
+            'act_relu'                       :  {**DEFAULT_MODEL, 'activation': ReLU()},
+
             #Normalization Variants
-            'act_softplus_norm_rms':  {**DEFAULT_MODEL, 'activation': Softplus(), 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
-            'norm_rms'             :  {**DEFAULT_MODEL, 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
-            'norm_bias_ablation'   :  {**DEFAULT_MODEL, 'norm': partial(UncenteredLayerNorm, eps=1e-6, has_bias=False), 
+            'act_softplus_norm_rms'          :  {**DEFAULT_MODEL, 'activation': Softplus(), 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
+            'norm_rms'                       :  {**DEFAULT_MODEL, 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
+            'norm_bias_ablation'             :  {**DEFAULT_MODEL, 'norm': partial(UncenteredLayerNorm, eps=1e-6, has_bias=False), 
                                        'last_norm': partial(UncenteredLayerNorm,has_bias=False)},
-            'norm_center_ablation' :  {**DEFAULT_MODEL, 'norm': partial(UncenteredLayerNorm, eps=1e-6, center=False),
+            'norm_center_ablation'           :  {**DEFAULT_MODEL, 'norm': partial(UncenteredLayerNorm, eps=1e-6, center=False),
                                        'last_norm': partial(UncenteredLayerNorm,center=False)},
-            'norm_batch'           :  {**DEFAULT_MODEL, 'norm': RepBN,'last_norm' : RepBN},
+            'norm_batch'                     :  {**DEFAULT_MODEL, 'norm': RepBN,'last_norm' : RepBN},
 
             #Special Variants
-            'variant_layer_scale':              {**DEFAULT_MODEL,},
-            'variant_diff_attn':                {**DEFAULT_MODEL,},
-            'variant_diff_attn_relu':           {**DEFAULT_MODEL,'attn_activation': ReluAttention(), 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
+            'variant_layer_scale'             : {**DEFAULT_MODEL,},
+            'variant_diff_attn'               : {**DEFAULT_MODEL,},
+            'variant_diff_attn_relu'          : {**DEFAULT_MODEL,'attn_activation': ReluAttention(), 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
 
-            'variant_weight_normalization':     {**DEFAULT_MODEL,},
-            'variant_more_ffn':                 {**DEFAULT_MODEL,},
-            'variant_more_ffnx4':                 {**DEFAULT_MODEL,},
-            'attn_act_relu_pos'        :       {**DEFAULT_MODEL, 'attn_activation': ReluAttention(), 'activation': Softplus(), 'isWithBias': False, },
+            'variant_weight_normalization'    : {**DEFAULT_MODEL,},
+            'variant_more_ffn'                : {**DEFAULT_MODEL,},
+            'variant_more_ffnx4'              : {**DEFAULT_MODEL,},     
+            'variant_more_attn'               : {**DEFAULT_MODEL,},
+            'variant_more_attn_relu'          : {**DEFAULT_MODEL, 'attn_activation': ReluAttention()},
+
+
+            'variant_simplified_blocks'       : {**DEFAULT_MODEL,},
+            'variant_registers'               : {**DEFAULT_MODEL,},
+            'variant_proposed_solution'       : {**DEFAULT_MODEL,'attn_activation': ReluAttention()},
             
-            'variant_more_attn':                {**DEFAULT_MODEL,},
-
-            'variant_simplified_blocks':        {**DEFAULT_MODEL,},
-            'variant_registers':                {**DEFAULT_MODEL,},
-            'variant_proposed_solution':        {**DEFAULT_MODEL,'attn_activation': ReluAttention()},
-
-            'variant_dropout'        :  {**DEFAULT_MODEL, 'attn_drop_rate': 0.2, 'FFN_drop_rate':0.4 },
+            #dropout
+            'variant_dropout'                 :  {**DEFAULT_MODEL, 'attn_drop_rate': 0.2, 'FFN_drop_rate':0.4, 'projection_drop_rate': 0.4  },
+            'variant_dropout_ver2'            :  {**DEFAULT_MODEL, 'attn_drop_rate': 0.4, 'projection_drop_rate': 0.4},
             
-            
+            'dropout_layerdrop'               :  {**DEFAULT_MODEL, 'layer_drop_rate': 0.5, 'head_drop_rate': 0., 'attn_drop_rate': 0., 'projection_drop_rate': 0.},
+            'dropout_headdrop'                :  {**DEFAULT_MODEL, 'layer_drop_rate': 0., 'head_drop_rate': 0.3,  'attn_drop_rate': 0.0, 'projection_drop_rate': 0.0},
+            'dropout_remove_most_important'   :  {**DEFAULT_MODEL,'layer_drop_rate': 0., 'head_drop_rate': 0., },
 
+            #patch embedding
+            'variant_patch_embed'             :  {**DEFAULT_MODEL,},  
+            'variant_patch_embed_relu'        :  {**DEFAULT_MODEL,'attn_activation': ReluAttention()},               
 
-            #'variant_weight_normalization':     {**DEFAULT_MODEL, 'norm': partial(NormalizedLayerNorm, eps=1e-6), 'last_norm': NormalizedLayerNorm },
-            
 
 }
 
@@ -145,10 +156,28 @@ PRETRAINED_MODELS_URL = {
 
 
 def set_components_custom_lrp(args):
+    if args.method == "attribution_with_detach":
+        args.cp_rule = False
+        args.model_components['norm'] = partial(CustomLRPLayerNorm, eps=1e-6) 
+        args.model_components['last_norm'] = CustomLRPLayerNorm
+
+        if args.variant == "norm_batch":
+            args.model_components['norm']      = partial(RepBN, batchLayer = CustomLRPBatchNorm)
+            args.model_components['last_norm'] = partial(RepBN, batchLayer = CustomLRPBatchNorm)
+
+        if args.variant == "norm_rms":
+            args.model_components['norm'] = partial(CustomLRPRMSNorm, eps=1e-6)  
+            args.model_components['last_norm'] = CustomLRPRMSNorm
+
+
     if args.method == "custom_lrp":
         
         print(f"inside config with custom_lrp")
         if args.variant == "norm_batch":
+            args.model_components['norm']      = partial(RepBN, batchLayer = CustomLRPBatchNorm)
+            args.model_components['last_norm'] = partial(RepBN, batchLayer = CustomLRPBatchNorm)
+
+
             args.cp_rule = True
             return
 
@@ -156,7 +185,7 @@ def set_components_custom_lrp(args):
         args.model_components['norm'] = partial(CustomLRPLayerNorm, eps=1e-6) 
         args.model_components['last_norm'] = CustomLRPLayerNorm
 
-        if (args.variant == 'attn_act_relu_no_cp') or (args.variant == 'variant_diff_attn_relu') or (args.variant == 'attn_act_relu_pos') or (args.variant == 'attn_act_relu_normalized'):
+        if ('relu' in args.variant) and (args.variant != 'attn_act_relu') and (args.variant != 'act_relu'):
             args.cp_rule = False
             return
 
@@ -164,11 +193,13 @@ def set_components_custom_lrp(args):
             args.model_components['norm'] = partial(CustomLRPRMSNorm, eps=1e-6)  
             args.model_components['last_norm'] = CustomLRPRMSNorm
 
-        #TODO: think if there is semothing wrong with doing this for relu variant
         args.cp_rule = True
 
     else:
         args.cp_rule = False
+
+
+
 
 def SET_VARIANTS_CONFIG(args):
     if args.variant not in MODEL_VARIANTS:

@@ -204,7 +204,7 @@ class Attention(nn.Module):
 
 class Block(nn.Module):
 
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,   
+    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0., projection_drop_rate = 0.,  
                 isWithBias = True,
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
@@ -217,7 +217,7 @@ class Block(nn.Module):
             dim, num_heads  = num_heads, 
             qkv_bias        = qkv_bias, 
             attn_drop       = attn_drop, 
-            proj_drop       = drop, 
+            proj_drop       = projection_drop_rate, 
             attn_activation = attn_activation,
             isWithBias      = isWithBias,
            )
@@ -295,6 +295,7 @@ class VisionTransformer(nn.Module):
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=True, mlp_head=False, drop_rate=0., attn_drop_rate=0., 
+                 projection_drop_rate = 0.,
                 isWithBias = True,
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
@@ -316,7 +317,7 @@ class VisionTransformer(nn.Module):
         self.blocks = nn.ModuleList([
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
-                drop=drop_rate, attn_drop=attn_drop_rate,         
+                drop=drop_rate, attn_drop=attn_drop_rate, projection_drop_rate = projection_drop_rate,         
            
                 isWithBias      = isWithBias, 
                 layer_norm      = layer_norm,
@@ -490,6 +491,7 @@ def deit_tiny_patch16_224(pretrained=False,
                           last_norm       = LayerNorm,
                           attn_drop_rate  = 0.,
                           FFN_drop_rate   = 0.,
+                          projection_drop_rate = 0.,
                           **kwargs):
 
     print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -503,6 +505,7 @@ def deit_tiny_patch16_224(pretrained=False,
         last_norm       = last_norm,
         attn_drop_rate  = attn_drop_rate,
         drop_rate       = FFN_drop_rate,
+        projection_drop_rate = projection_drop_rate,
         **kwargs)
     
     model.default_cfg = _cfg()

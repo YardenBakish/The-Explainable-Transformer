@@ -78,7 +78,7 @@ def generate_visualization_LRP(original_image, class_index=None, i=None):
 
 
 def generate_visualization_custom_LRP(batch_idx, thr, original_image, class_index=None,i=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), thr, method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), thr=thr, method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze().detach().cpu().numpy()
@@ -92,7 +92,7 @@ def generate_visualization_custom_LRP(batch_idx, thr, original_image, class_inde
     
     image_copy = 255 *image_transformer_attribution
     image_copy = image_copy.astype('uint8')
-    #Image.fromarray(image_copy, 'RGB').save(f'testing_vis/img_{i}.png')
+    Image.fromarray(image_copy, 'RGB').save(f'testing_vis/img_{i}.png')
     vis = show_cam_on_image(image_transformer_attribution, transformer_attribution)
     vis =  np.uint8(255 * vis)
     vis = cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)

@@ -437,9 +437,6 @@ class VisionTransformer(nn.Module):
         elif method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
             cam = cam[:, 1:]
-            #dont forget to change cp and change normalization layers
-            #cam = cam.clamp(min=0)
-
             cam = self.patch_embed.relprop(cam, **kwargs)
             # sum on channels
             cam = cam.sum(dim=1)

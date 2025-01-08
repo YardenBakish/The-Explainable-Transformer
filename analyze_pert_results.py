@@ -53,7 +53,7 @@ def parse_args():
                         help='')
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
-                        choices=['rollout', 'lrp', 'transformer_attribution', 'full_lrp', 'lrp_last_layer',
+                        choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
                                  'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
                         help='')
 
@@ -128,8 +128,15 @@ MAPPER_HELPER = {
    'attn act sigmoid': 'sigmoid attention',
    'attn act relu no cp': 'Relu/seqlen w/o cp',
    'norm batch':           'BatchNorm',
-   'variant weight normalization': 'WeightNormalization'
-
+   'variant weight normalization': 'WeightNormalization',
+   'variant diff attn': 'DiffTransformer',
+   'variant diff attn relu': 'DiffTransformer w/ Relu',
+   'attn act relu pos' : 'ReluAttention w/ Softplus',
+   'variant registers': 'DeiT-tiny w/ registers',
+   'variant relu softmax': 'Relu m.w/ Softmax',
+   'attn act relu normalized': 'Propotional Relu',
+   'act relu': 'Relu Act.',
+   'variant layer scale relu attn': 'LayerScale w/ ReluAttention',
 
 
 }
@@ -334,6 +341,8 @@ def run_perturbations(args):
           continue
        print(f"working on epoch {epoch}")
        pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
+       pert_results_dir = pert_results_dir if args.method != 'attribution_with_detach' else 'pert_results/attribution_w_detach'
+
        eval_pert_epoch_cmd = f"{eval_pert_cmd} --output-dir {model_dir}/{pert_results_dir}/res_{epoch}"
        if args.normalized_pert == 0:
           eval_pert_epoch_cmd+="_base"
@@ -355,6 +364,7 @@ def generate_plots(dir_path,args):
     acc_results_path = os.path.join(dir_path, 'acc_results.json')
     acc_dict = parse_acc_results(acc_results_path)
     pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
+    pert_results_dir = pert_results_dir if args.method != 'attribution_with_detach' else 'pert_results/attribution_w_detach'
     
     pert_results_path = os.path.join(dir_path, pert_results_dir)
     pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args)
@@ -429,6 +439,8 @@ def analyze(args):
        acc_results_path = os.path.join(subdir, 'acc_results.json')
        acc_dict = parse_acc_results(acc_results_path)
        pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
+       pert_results_dir = pert_results_dir if args.method != 'attribution_with_detach' else 'pert_results/attribution_w_detach'
+
        pert_results_path = os.path.join(subdir, pert_results_dir)
        pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args, op)
        tmp_max_neg         = -float('inf')

@@ -30,7 +30,6 @@ transform = transforms.Compose([
 
 
 
-
 # create heatmap from mask on image
 def show_cam_on_image(img, mask):
    
@@ -70,7 +69,7 @@ def generate_visualization_LRP(original_image, class_index=None, i=None):
     
     image_copy = 255 *image_transformer_attribution
     image_copy = image_copy.astype('uint8')
-    Image.fromarray(image_copy, 'RGB').save(f'testing_vis/img_{i}.png')
+    Image.fromarray(image_copy, 'RGB').save(f'testing_vis2/img_{i}.png')
     vis = show_cam_on_image(image_transformer_attribution, transformer_attribution)
     vis =  np.uint8(255 * vis)
     vis = cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)
@@ -78,7 +77,7 @@ def generate_visualization_LRP(original_image, class_index=None, i=None):
 
 
 def generate_visualization_custom_LRP(batch_idx, thr, original_image, class_index=None,i=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), thr=thr, method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(),  method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze()
@@ -107,18 +106,17 @@ def generate_visualization_custom_LRP(batch_idx, thr, original_image, class_inde
     idx_pred = idx_pred.squeeze()  # Remove any extra dimensions
     idx_pred = idx_pred.unsqueeze(0)  # Add channel dimension
     idx_pred = idx_pred.expand(3, -1) 
-    print(f"idx_pred shape: {idx_pred.shape}")
-    print(f"image_copy_tensor shape: {image_copy_tensor.dtype}")
+
     image_flat = image_copy_tensor.reshape(3, -1)
     
     # Apply scatter operation to black out pixels
-    #data_pred_perturbed = image_flat.scatter_(1, idx_pred, 0)
-    _data_pred_pertubarted   = image_flat.scatter_(1, idx_pred, 0)
-    print(_data_pred_pertubarted.shape)
-    print(_data_pred_pertubarted.shape)
+    #_data_pred_pertubarted   = image_flat.scatter_(1, idx_pred, 0)
+    _data_pred_pertubarted   = image_flat
+
+
 
     res =  _data_pred_pertubarted.reshape(3, 224, 224).permute(1, 2, 0).cpu().numpy()
-    Image.fromarray(res, 'RGB').save(f'testing_vis/img_{i}.png')
+    Image.fromarray(res, 'RGB').save(f'testing_vis2/img_{i}.png')
 
 
 def print_top_classes(predictions, **kwargs):    
@@ -219,9 +217,12 @@ if __name__ == "__main__":
 
   count = 0
   for batch_idx, (data, target) in enumerate(tqdm(sample_loader)):
-     lst = [104]
-     if batch_idx not in lst:
-        if batch_idx < max(lst):
+
+     modified_lst =  [15, 7,29,37,54, 59,79,90,104,108,118,141,157,165,177,]
+
+  
+     if batch_idx not in modified_lst:
+        if batch_idx < max(modified_lst):
           count+=1
           continue
         else:
