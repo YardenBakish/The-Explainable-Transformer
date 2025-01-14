@@ -26,7 +26,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 10
-    
+    is_with_regularization = True if args.model_components['reg_coeffs'] else False
     if args.cosub:
         criterion = torch.nn.BCEWithLogitsLoss()
         
@@ -45,8 +45,18 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
          
         with torch.cuda.amp.autocast():
             outputs = model(samples)
+            if is_with_regularization:
+                reg_loss = outputs[1]
+                outputs  = outputs[0]
             if not args.cosub:
                 loss = criterion(samples, outputs, targets)
+                if is_with_regularization:
+                    acc_loss   = loss
+                    lambda_acc = args.model_components['reg_coeffs'][0]
+                    lambda_reg = args.model_components['reg_coeffs'][1]
+
+                    loss = lambda_acc * acc_loss + lambda_reg * reg_loss
+             
             else:
                 #outputs = torch.split(outputs, outputs.shape[0]//2, dim=0)
                 loss = 0.25 * criterion(outputs[0], targets) 
@@ -55,6 +65,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
                 loss = loss + 0.25 * criterion(outputs[1], outputs[0].detach().sigmoid()) 
 
         loss_value = loss.item()
+        if is_with_regularization:
+            loss_acc_value = acc_loss.item()
+            loss_reg_value = reg_loss.item()
+
+
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
@@ -72,6 +87,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
             model_ema.update(model)
 
         metric_logger.update(loss=loss_value)
+        if is_with_regularization:
+            metric_logger.update(loss_acc_value=loss_acc_value)
+            metric_logger.update(loss_reg_value=loss_reg_value)
+
+
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -80,7 +100,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: DistillationLoss,
 
 
 @torch.no_grad()
-def evaluate(data_loader, model, device):
+def evaluate(data_loader, model, device, isWithRegularization = False):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -99,18 +119,23 @@ def evaluate(data_loader, model, device):
         # compute output
         with torch.cuda.amp.autocast():
             output = model(images)
-            print(target[0])
-            print(torch.argmax(output[0]))
-            print(target[1])
-            print(torch.argmax(output[1]))
+            if isWithRegularization:
+                regularization_value = output[1]
+                output               = output[0]
             loss = criterion(output, target)
 
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
 
         batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
+        if isWithRegularization:
+            metric_logger.update(reg_loss=regularization_value.item())
+
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        if isWithRegularization:
+            metric_logger.meters['regLoss'].update(regularization_value.item(), n=batch_size)
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'

@@ -370,7 +370,7 @@ def main(args):
 
         checkpoint_model = checkpoint['model']
         state_dict = model.state_dict()
-        for k in ['head.weight', 'head.bias', 'head_dist.weight', 'head_dist.bias']:
+        for k in ['head.weight', 'head.bias', 'head_dist.weight', 'patch_embed.proj.weight',  'head_dist.bias']:
             if k not in state_dict:
                 continue
             if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
@@ -596,10 +596,13 @@ def main(args):
                     'args': args,
                 }, checkpoint_path)
              
-
-        test_stats = evaluate(data_loader_val, model, device)
+        isWithRegularization = args.model_components['reg_coeffs'] != None
+        test_stats = evaluate(data_loader_val, model, device, isWithRegularization = isWithRegularization )
         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']}%")
         update_json(f'{args.output_dir}/acc_results.json', {f"{epoch}_acc": f"* Acc@1 {test_stats['acc1']:.1f} Acc@5 {test_stats['acc5']:.1f} loss {test_stats['loss']:.1f}"})
+        if isWithRegularization:
+            update_json(f'{args.output_dir}/acc_results.json', {f"{epoch}_regLoss": f"* reg_loss {test_stats['regLoss']:.3f}"})
+
 
 
         if max_accuracy < test_stats["acc1"]:

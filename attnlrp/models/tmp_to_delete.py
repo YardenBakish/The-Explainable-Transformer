@@ -293,13 +293,14 @@ class BatchNorm2d(nn.BatchNorm2d, RelProp):
 
 class Linear(nn.Linear, RelProp):
     def relprop(self, R, alpha):
-        '''inputs, outputs = self.X, self.Y 
-        relevance_norm = R[0] / _stabilize(outputs, 1e-8, inplace=False)
+        '''
+        relevance_norm = R[0] / _stabilize(self.Y, 1e-8, inplace=False)
 
         # computes vector-jacobian product
-        Z = F.linear(inputs, self.weight)
-        grads = torch.autograd.grad(Z, inputs, relevance_norm)[0]
-        return self.X * grads'''
+        Z = F.linear(self.X, self.weight)
+        grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]
+        return self.X * grads
+'''
         # return relevance at requires_grad indices else None
         
         beta = alpha - 1

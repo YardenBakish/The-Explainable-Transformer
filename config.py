@@ -10,6 +10,7 @@ DEFAULT_MODEL = {
     'attn_drop_rate'       : 0.,
     'FFN_drop_rate'        : 0.,
     'projection_drop_rate' : 0.,
+    'reg_coeffs'           : None,          
 
 }
 
@@ -59,6 +60,10 @@ MODEL_VARIANTS = {
             'variant_diff_attn_relu'          : {**DEFAULT_MODEL,'attn_activation': ReluAttention(), 'norm': partial(RMSNorm, eps=1e-6), 'last_norm': RMSNorm },
 
             'variant_weight_normalization'    : {**DEFAULT_MODEL,},
+            'variant_sigmaReparam_relu'       : {**DEFAULT_MODEL,'attn_activation': ReluAttention()},
+            'variant_sigmaReparam'            : {**DEFAULT_MODEL,},
+
+
             'variant_more_ffn'                : {**DEFAULT_MODEL,},
             'variant_more_ffnx4'              : {**DEFAULT_MODEL,},     
             'variant_more_attn'               : {**DEFAULT_MODEL,},
@@ -81,6 +86,8 @@ MODEL_VARIANTS = {
             'variant_patch_embed'             :  {**DEFAULT_MODEL,},  
             'variant_patch_embed_relu'        :  {**DEFAULT_MODEL,'attn_activation': ReluAttention()},               
 
+            #regularization
+            'variant_l2_loss'                  :  {**DEFAULT_MODEL, 'reg_coeffs' : [0.85,0.15]}, 
 
 }
 

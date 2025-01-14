@@ -11,10 +11,6 @@ from baselines.ViT.weight_init import trunc_normal_
 from baselines.ViT.layer_helpers import to_2tuple
 from functools import partial
 import inspect
-import seaborn as sns
-import matplotlib.pyplot as import inspect
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 def safe_call(func, **kwargs):
     # Get the function's signature
@@ -73,9 +69,9 @@ class Mlp(nn.Module):
         print(f"inside MLP with isWithBias: {isWithBias} and activation {activation}")
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
-        self.fc1 = Linear(in_features, hidden_features, bias = isWithBias)
+        self.fc1 = SNLinear(in_features, hidden_features, bias = isWithBias)
         self.act = activation
-        self.fc2 = Linear(hidden_features, out_features, bias = isWithBias)
+        self.fc2 = SNLinear(hidden_features, out_features, bias = isWithBias)
         self.drop = Dropout(drop)
 
     def forward(self, x):
@@ -94,124 +90,30 @@ class Mlp(nn.Module):
         return cam
 
 
-
-
-
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False,attn_drop=0., proj_drop=0., 
        
                 attn_activation = Softmax(dim=-1), 
-                isWithBias      = True, 
-                depth = 0,
-             ):
+                isWithBias      = True):
         
         super().__init__()
 
         print(f"inside attention with activation : {attn_activation} | bias: {isWithBias} ")
         self.num_heads = num_heads
-        self.dim = dim
+
         head_dim = dim // num_heads
-        self.head_dim = head_dim
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = head_dim ** -0.5
-        self.depth = depth
+   
 
         # A = Q*K^T
         self.matmul1 = einsum('bhid,bhjd->bhij')
         # attn = A*V
         self.matmul2 = einsum('bhij,bhjd->bhid')
 
-        self.qkv = Linear(dim, dim * 3, bias=qkv_bias)
-
-
-    
-        
-        for i in range(3):
-          head_idx = i
-          start_idx = head_idx * head_dim
-          end_idx = (head_idx + 1) * head_dim
-
-          # Create new linear layer for this head
-          #head_proj = Linear(self.dim, self.head_dim * 3, bias=qkv_bias)
-
-          # Extract Q, K, V weights for this head
-          q_weight = self.qkv.weight[start_idx:end_idx].view(head_dim, dim)
-          k_weight = self.qkv.weight[dim+start_idx:dim+end_idx].view(head_dim, dim)
-          v_weight = self.qkv.weight[2*dim+start_idx:2*dim+end_idx].view(head_dim, dim)
-          combined_weights = torch.cat([q_weight, k_weight, v_weight], dim=0)  # Shape will be (head_dim*3, dim)
-          if i == 0:
-            self.qkv_h1 =   Linear(dim, head_dim * 3, bias=qkv_bias)
-            self.qkv_h1.weight.data = combined_weights
-           # self.qkv_h1.weight.data[:head_dim] = q_weight
-           # self.qkv_h1.weight.data[head_dim: 2*head_dim] = k_weight
-           # self.qkv_h1.weight.data[2*head_dim:] = v_weight
-
-          elif i == 1:
-            self.qkv_h2 =   Linear(dim, head_dim * 3, bias=qkv_bias)
-
-            self.qkv_h2.weight.data[:head_dim] = q_weight
-            self.qkv_h2.weight.data[head_dim: 2*head_dim] = k_weight
-            self.qkv_h2.weight.data[2*head_dim:] = v_weight
-
-          else:
-            self.qkv_h3 =   Linear(dim, head_dim * 3, bias=qkv_bias)
-
-            self.qkv_h3.weight.data[:head_dim] = q_weight
-            self.qkv_h3.weight.data[head_dim: 2*head_dim] = k_weight
-            self.qkv_h3.weight.data[2*head_dim:] = v_weight
-
-
-   
-          # Handle biases if needed
-          if isWithBias and qkv_bias:
-              q_bias = self.qkv.bias[start_idx:end_idx]
-              k_bias = self.qkv.bias[dim+start_idx:dim+end_idx]
-              v_bias = self.qkv.bias[2*dim+start_idx:2*dim+end_idx]
-              
-              if i == 0:
-                self.qkv_h1.bias.data[:head_dim] = q_bias
-                self.qkv_h1.bias.data[head_dim: 2*head_dim] = k_bias
-                self.qkv_h1.bias.data[2*head_dim:] = v_bias
-
-              elif i==1:
-                self.qkv_h2.bias.data[:head_dim] = q_bias
-                self.qkv_h2.bias.data[head_dim: 2*head_dim] = k_bias
-                self.qkv_h2.bias.data[2*head_dim:] = v_bias
-              else:
-                self.qkv_h3.bias.data[:head_dim] = q_bias
-                self.qkv_h3.bias.data[head_dim: 2*head_dim] = k_bias
-                self.qkv_h3.bias.data[2*head_dim:] = v_bias
-          #print(combined_weight1)
-          #print(combined_bias1.shape)
-        #print("\n")
-        
- 
-
-        #print(self.v_proj.weight.data)
-        #print(self.v_proj.weight.shape)
-
-       
-        #print((self.qkv.weight.data[0:self.head_dim] == self.qkv_h1.weight.data[0:self.head_dim]).all())
-  
-
-        #print((self.qkv.bias.data[0:self.head_dim] == self.qkv_h1.bias.data[0:self.head_dim]).all())
-
-    
-        #print((self.qkv.bias.data[0:self.head_dim] == self.qkv_h1.bias.data[0:self.head_dim]).all())
-
-  
-        v_weight = self.qkv.weight[dim*2:dim*3].view(dim, dim)
-        self.v_proj = Linear(dim, dim, bias=qkv_bias)
-        self.v_proj.weight.data = v_weight
-
-        if isWithBias:
-            v_bias   = self.qkv.bias[dim*2:dim*3]
-            self.v_proj.bias.data = v_bias
-
-      
-
+        self.qkv = SNLinear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = Dropout(attn_drop)
-        self.proj = Linear(dim, dim, bias = isWithBias)
+        self.proj = SNLinear(dim, dim, bias = isWithBias)
         self.proj_drop = Dropout(proj_drop)
         self.attn_activation = attn_activation
 
@@ -220,9 +122,6 @@ class Attention(nn.Module):
         self.v = None
         self.v_cam = None
         self.attn_gradients = None
-
-
-
 
     def get_attn(self):
         return self.attn
@@ -258,220 +157,16 @@ class Attention(nn.Module):
         b, n, _, h = *x.shape, self.num_heads
         qkv = self.qkv(x)
         q, k, v = rearrange(qkv, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=h)
-        
-
-
-        #done only for hook
-        tmp = self.v_proj(x)
-   
-        #t = x.clone()
-        tmp = self.qkv_h1(x)
-        tmp2 = self.qkv_h2(x)
-        tmp3 = self.qkv_h3(x)
-
-
-
-
-
-
-
-        #print((self.qkv.bias.data[0:self.head_dim] == self.qkv_h1.bias.data[0:self.head_dim]).all())
-       # print("\n")
-       # print("sadasdasdasdaSADJASKDJAKSDJSAKD")
-      #  print(self.qkv_h1.weight.data[self.head_dim*2:])
-       # print(self.qkv_h1.weight.shape)
-
-        #print(self.v_proj.weight.data)
-        #print(self.v_proj.weight.shape)
-
-      #  print(self.qkv.weight.data[2*self.dim : 2*self.dim  + self.head_dim])
-        #print(self.qkv.weight.data.shape)
-     #   print("\n")
-        
- 
-
-
-        #print(tmp)
-        #print(tmp.shape)
-        #print(qkv[0:self.head_dim])
-        #print(qkv.shape)
-
-
-     #   exit(1)
-        #######
-
 
         self.save_v(v)
 
         dots = self.matmul1([q, k]) * self.scale
        
         attn = self.attn_activation(dots)
-
-
-
-                #attention_variance  = attn.var(dim=[2, 3], keepdim=False)
-        #attention_variance_mean = attention_variance.mean(dim=1)
-        #print(attention_variance_mean.shape)
-#
-        #threshold = 0.1  # Example threshold, you can tune this based on your needs
-        #condensed_attention_mask = attention_variance_mean  < threshold
-        #condensed_patch_indices = torch.nonzero(condensed_attention_mask)
-#
-        #other_patches_mask = ~condensed_attention_mask
-        #print(condensed_attention_mask.shape)
-        #mean_other_patches_mask = attn[condensed_attention_mask].mean(dim=3, keepdim=True)
-#
-#
-        #attn_replica= attn.clone()
-        #attn_replica[condensed_attention_mask] *= 0.5
-#
-#
-        #attn_replica[other_patches_mask] += mean_other_patches_mask
-#
-        #attn = attn_replica
-
-
-
-        '''
-        token_norms = torch.norm(v, p=2, dim=-1)  # [batch_size, num_heads, num_tokens]
-    
-        # Find threshold for each head separately
-        thresholds = torch.quantile(token_norms, 98/100, dim=-1, keepdim=True)  # [batch_size, num_heads, 1]
-
-        # Create masks for high and low magnitude tokens
-        high_magnitude_mask = token_norms > thresholds  # [batch_size, num_heads, num_tokens]
-        low_magnitude_mask = ~high_magnitude_mask
-
-        # Expand masks to match v_proj dimensions
-        high_magnitude_mask = high_magnitude_mask.unsqueeze(-1).expand_as(v)
-        low_magnitude_mask = low_magnitude_mask.unsqueeze(-1).expand_as(v)
-
-        # Create modified version of v_proj
-        v_proj_balanced = v.clone()
-
-        # Reduce high magnitude tokens
-        v_proj_balanced[high_magnitude_mask] *= 0.01
-
-        # Increase low magnitude tokens
-        v_proj_balanced[low_magnitude_mask] *= 4.2
-
-        v = v_proj_balanced
-        
-        '''
-
-
-        '''
-        attention_maps = attn.squeeze(0).data.cpu().numpy()
-    
-        # Create a heatmap for each head
-        for head_idx in range(attention_maps.shape[0]):
-            plt.figure(figsize=(10, 8))
-
-            # Create heatmap using seaborn
-            sns.heatmap(
-                attention_maps[head_idx],
-                cmap='viridis',
-                cbar=True,
-                xticklabels=False,
-                yticklabels=False
-            )
-
-            plt.title(f'Attention Map - Head {head_idx}')
-
-            # Save the figure
-            save_path =  f'/content/The-Explainable-Transformer/testing_vis3/attn_{self.depth}_{head_idx}.png'
-            plt.savefig(save_path, bbox_inches='tight', dpi=300)
-            plt.close()
-        '''
-        '''
-        if 10>= self.depth >= 1:
-          for head in range(3):
-            column_norms = torch.norm(attn[:, head, :, :], p=2, dim=1)
-            _, top_k_indices = torch.topk(column_norms, k=5, dim=1)
-            for batch in range(1):
-              attn[batch, head, :, top_k_indices[batch]] = 0
-        '''
-
-
-
-        '''
-
-        if 10>= self.depth >=1  :   
-          l2_norms = torch.norm(attn, dim=2)  # [B, H, N]
-          # Random number of patches per batch and head
-          num_patches = torch.randint(2, 6, (b, h), device=attn.device)
-          mask = torch.ones_like(attn)
-          _, top_indices = torch.topk(l2_norms, k=5, dim=-1)  # [B, H, 5]
-          batch_idx = torch.arange(b, device=attn.device)[:, None, None]
-          head_idx = torch.arange(h, device=attn.device)[None, :, None]
-
-          # Create mask using selected number of patches
-          for i in range(5):
-              patch_mask = (i < num_patches[:, :, None]).to(attn.dtype)
-              mask[batch_idx, head_idx, :, top_indices[:, :, i]] *= (1 - patch_mask)
-
-          # Apply mask and rescale
-          attn = attn * mask
-        '''
-
-
-        '''
-            if 10>= self.depth >=1  :   
-                l2_norms = torch.norm(attn, dim=2)  # [B, H, N]
-                # Random number of patches per batch and head
-                num_patches = torch.randint(1, 6, (b, h), device=attn.device)
-                mask = torch.ones_like(attn)
-                _, top_indices = torch.topk(l2_norms, k=5, dim=-1)  # [B, H, 5]
-                batch_idx = torch.arange(b, device=attn.device)[:, None, None]
-                head_idx = torch.arange(h, device=attn.device)[None, :, None]
-
-                mask = torch.ones_like(attn)
- 
-                patch_range = torch.arange(5, device=attn.device)
-                patch_mask = (patch_range[None, None, :] < num_patches[:, :, None])  # [B, H, 5]
-    
-                for i in range(5):
-                    current_indices = top_indices[:, :, i]  # [B, H]
-                    mask[batch_idx.squeeze(-1), head_idx.squeeze(-1), :, current_indices] *= (1 - patch_mask[:, :, i:i+1].to(attn.dtype))
-                            # Apply mask and rescale
-                attn = attn * mask
-        '''
-
-
-
-        '''
-        seq_length = 197
-        attn = self.attn_activation(dots)
-
-        positions = torch.arange(seq_length - 1,  device=attn.device)  # -1 for excluding CLS
-        decay_rate = 0.01
-        # Calculate distances for patch tokens only
-        distances = torch.abs(positions.unsqueeze(0) - positions.unsqueeze(1))
-        
-        # Create exponential decay mask for patch tokens
-        patch_mask = torch.exp(-decay_rate * distances)
-        
-        # Create full mask including CLS token
-        full_mask = torch.ones(seq_length, seq_length,  device=attn.device)
-        
-        # Place patch mask in the bottom-right corner (excluding CLS row/column)
-        full_mask[1:, 1:] = patch_mask
-        
-        # CLS token (first row and column) remains 1, allowing full attention
-        # This is already handled by initializing with ones, just keeping for clarity
-        full_mask[0, :] = 1  # CLS can attend to all tokens
-        full_mask[:, 0] = 1 
-        
-        attn = self.attn_drop(attn)
-        attn = attn * full_mask
-        
-        
-        '''
-
         attn = self.attn_drop(attn)
 
         self.save_attn(attn)
-        attn.register_hook(self.save_attn_gradients)
+        #attn.register_hook(self.save_attn_gradients)
 
         out = self.matmul2([attn, v])
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -480,21 +175,15 @@ class Attention(nn.Module):
         out = self.proj_drop(out)
         return out
 
-    def relprop(self, cam = None,cp_rule = False, **kwargs):
+    def relprop(self, cam, **kwargs):
         cam = self.proj_drop.relprop(cam, **kwargs)
         cam = self.proj.relprop(cam, **kwargs)
         cam = rearrange(cam, 'b n (h d) -> b h n d', h=self.num_heads)
-        print(f"cam: {cam.shape}"  )
+
         # attn = A*V
         (cam1, cam_v)= self.matmul2.relprop(cam, **kwargs)
         cam1 /= 2
         cam_v /= 2
-
-        print(f"cam1: {cam1.shape}"  )
-
-        print(f"cam_v: {cam_v.shape}"  )
-
-
 
         self.save_v_cam(cam_v)
         self.save_attn_cam(cam1)
@@ -508,78 +197,32 @@ class Attention(nn.Module):
         cam_q /= 2
         cam_k /= 2
 
-
-        print(f"cam_q: {cam_q.shape}"  )
-        print(f"cam_k: {cam_q.shape}"  )
-
-
-
         cam_qkv = rearrange([cam_q, cam_k, cam_v], 'qkv b h n d -> b n (qkv h d)', qkv=3, h=self.num_heads)
-        print(f"cam_qkv: {cam_qkv.shape}"  )
-        
-        head_dim = self.head_dim
-        dim      = self.dim
-        start_idx = 0 * head_dim
-        end_idx = 1 * head_dim
 
-        q_h1 = cam_qkv[:,:,start_idx: end_idx]
-        k_h1 =  cam_qkv[:,:,dim+start_idx:dim+end_idx] 
-        v_h1 =  cam_qkv[:,:,2*dim+start_idx:2*dim+end_idx] 
-        cam_qkv_h1 = torch.cat([q_h1, k_h1, v_h1], dim=-1)
-
-        start_idx = 1 * head_dim
-        end_idx = 2 * head_dim
-        q_h2 = cam_qkv[:,:,start_idx: end_idx]
-        k_h2 =  cam_qkv[:,:,dim+start_idx:dim+end_idx] 
-        v_h2 =  cam_qkv[:,:,2*dim+start_idx:2*dim+end_idx] 
-        cam_qkv_h2 = torch.cat([q_h2, k_h2, v_h2],  dim=-1)
-
-        start_idx = 2 * head_dim
-        end_idx = 3 * head_dim
-        q_h3 = cam_qkv[:,:,start_idx: end_idx]
-        k_h3 =  cam_qkv[:,:,dim+start_idx:dim+end_idx] 
-        v_h3 =  cam_qkv[:,:,2*dim+start_idx:2*dim+end_idx] 
-        cam_qkv_h3 = torch.cat([q_h3, k_h3, v_h3],  dim=-1)
-
-      
-
-        v_proj_map = cam_qkv[:,:,384:]
-       
-        if False:
-            return self.qkv_h2.relprop(cam_qkv_h2, **kwargs) 
-
-        
-        if cp_rule:
-            return self.v_proj.relprop(v_proj_map, **kwargs) 
-        else:
-            return self.qkv.relprop(cam_qkv, **kwargs)
+        return self.qkv.relprop(cam_qkv, **kwargs)
 
 
 class Block(nn.Module):
 
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0.,   
+    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, drop=0., attn_drop=0., projection_drop_rate = 0.,  
                 isWithBias = True,
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
-                attn_activation = Softmax(dim=-1),
-                depth = 0
-             ):
+                attn_activation = Softmax(dim=-1) ):
         super().__init__()
         print(f"Inside block with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
 
-        self.norm1 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
+        #self.norm1 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
         self.attn = Attention(
             dim, num_heads  = num_heads, 
             qkv_bias        = qkv_bias, 
             attn_drop       = attn_drop, 
-            proj_drop       = drop, 
+            proj_drop       = projection_drop_rate, 
             attn_activation = attn_activation,
             isWithBias      = isWithBias,
-            depth = depth,
-          
            )
         
-        self.norm2 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
+        #self.norm2 = safe_call(layer_norm, normalized_shape= dim, bias = isWithBias ) 
         mlp_hidden_dim = int(dim * mlp_ratio)
         
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, 
@@ -597,23 +240,27 @@ class Block(nn.Module):
     def forward(self, x):
         x1, x2 = self.clone1(x, 2)
       
-        x = self.add1([x1, self.attn(self.norm1(x2))])
+        #x = self.add1([x1, self.attn(self.norm1(x2))])
+        x = self.add1([x1, self.attn(x2)])
+
         x1, x2 = self.clone2(x, 2)
       
-        x = self.add2([x1, self.mlp(self.norm2(x2))])
+        #x = self.add2([x1, self.mlp(self.norm2(x2))])
+        x = self.add2([x1, self.mlp(x2)])
+
         return x
 
-    def relprop(self, cam = None, cp_rule = False, **kwargs):
+    def relprop(self, cam, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
         cam2 = self.mlp.relprop(cam2, **kwargs)
        
-        cam2 = self.norm2.relprop(cam2, **kwargs)
+        #cam2 = self.norm2.relprop(cam2, **kwargs)
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
-        cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
+        cam2 = self.attn.relprop(cam2, **kwargs)
       
-        cam2 = self.norm1.relprop(cam2, **kwargs)
+        #cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
         return cam
 
@@ -630,7 +277,7 @@ class PatchEmbed(nn.Module):
         self.patch_size = patch_size
         self.num_patches = num_patches
 
-        self.proj = Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = SNConv2d(in_channels=in_chans, out_channels= embed_dim, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, x):
         B, C, H, W = x.shape
@@ -652,12 +299,12 @@ class VisionTransformer(nn.Module):
     """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=True, mlp_head=False, drop_rate=0., attn_drop_rate=0., 
+                 projection_drop_rate = 0.,
                 isWithBias = True,
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
                 attn_activation = Softmax(dim=-1),
-                last_norm       = LayerNorm,
-               ):
+                last_norm       = LayerNorm,):
         
         super().__init__()
         print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -674,23 +321,21 @@ class VisionTransformer(nn.Module):
         self.blocks = nn.ModuleList([
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias,
-                drop=drop_rate, attn_drop=attn_drop_rate,         
+                drop=drop_rate, attn_drop=attn_drop_rate, projection_drop_rate = projection_drop_rate,         
            
                 isWithBias      = isWithBias, 
                 layer_norm      = layer_norm,
                 activation      = activation,
-                attn_activation = attn_activation,
-                depth = i
-               )
+                attn_activation = attn_activation,)
             for i in range(depth)])
 
-        self.norm = safe_call(last_norm, normalized_shape= embed_dim, bias = isWithBias ) 
+        #self.norm = safe_call(last_norm, normalized_shape= embed_dim, bias = isWithBias ) 
         if mlp_head:
             # paper diagram suggests 'MLP head', but results in 4M extra parameters vs paper
             self.head = Mlp(embed_dim, int(embed_dim * mlp_ratio), num_classes, 0., isWithBias, activation)
         else:
             # with a single Linear layer as head, the param count within rounding of paper
-            self.head = Linear(embed_dim, num_classes, bias = isWithBias)
+            self.head = SNLinear(embed_dim, num_classes, bias = isWithBias)
 
         # FIXME not quite sure what the proper weight init is supposed to be,
         # normal / trunc normal w/ std == .02 similar to other Bert like transformers
@@ -720,7 +365,7 @@ class VisionTransformer(nn.Module):
                 nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    @property
+    @torch.jit.ignore
     def no_weight_decay(self):
         return {'pos_embed', 'cls_token'}
 
@@ -728,57 +373,36 @@ class VisionTransformer(nn.Module):
         B = x.shape[0]
         x = self.patch_embed(x)
 
-        '''
-        token_norms = torch.norm(x, p=2, dim=-1)
-        _, top_k_indices = torch.topk(token_norms, k=5, dim=1)
-
-        x[:,top_k_indices[0,1],:] *= 0.1
-        '''
-
         cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)
         x = self.add([x, self.pos_embed])
 
-        x.register_hook(self.save_inp_grad)
+        #x.register_hook(self.save_inp_grad)
 
         for blk in self.blocks:
             x = blk(x)
      
-        x = self.norm(x)
+        #x = self.norm(x)
         x = self.pool(x, dim=1, indices=torch.tensor(0, device=x.device))
         x = x.squeeze(1)
         x = self.head(x)
         return x
 
-    def relprop(self, cam=None,method="transformer_attribution",thr = 100000, cp_rule = False, is_ablation=False, start_layer=0, **kwargs):
+    def relprop(self, cam=None,method="transformer_attribution", is_ablation=False, start_layer=0, **kwargs):
         # print(kwargs)
         # print("conservation 1", cam.sum())
         cam = self.head.relprop(cam, **kwargs)
         cam = cam.unsqueeze(1)
         cam = self.pool.relprop(cam, **kwargs)
      
-        cam = self.norm.relprop(cam, **kwargs)
-        #print(f"cam shape start: {cam.shape}")
-
-        count = 0
+        #cam = self.norm.relprop(cam, **kwargs)
         for blk in reversed(self.blocks):
-            count +=1
-            if count > thr:
-              break
-            cam = blk.relprop(cam,cp_rule = cp_rule, **kwargs)
-            #print(f"cam shape: {cam.shape}")
+            cam = blk.relprop(cam, **kwargs)
 
         # print("conservation 2", cam.sum())
         # print("min", cam.min())
 
-        if method   == "custom_lrp":
-            cam = cam[0, 1:, :]
-            #FIXME: slight tradeoff between noise and intensity of important features
-            #cam = cam.clamp(min=0)
-            norms = torch.norm(cam, p=2, dim=1)  # Shape: [196]
-            return norms
-
-        elif method == "full":
+        if method == "full":
             (cam, _) = self.add.relprop(cam, **kwargs)
             cam = cam[:, 1:]
             cam = self.patch_embed.relprop(cam, **kwargs)
@@ -872,7 +496,6 @@ def deit_tiny_patch16_224(pretrained=False,
                           attn_drop_rate  = 0.,
                           FFN_drop_rate   = 0.,
                           projection_drop_rate = 0.,
-                        
                           **kwargs):
 
     print(f"calling vision transformer with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -884,8 +507,9 @@ def deit_tiny_patch16_224(pretrained=False,
         activation      = activation,
         attn_activation = attn_activation,
         last_norm       = last_norm,
-  
-    
+        attn_drop_rate  = attn_drop_rate,
+        drop_rate       = FFN_drop_rate,
+        projection_drop_rate = projection_drop_rate,
         **kwargs)
     
     model.default_cfg = _cfg()
@@ -899,30 +523,3 @@ def deit_tiny_patch16_224(pretrained=False,
 
 
 
-
-
-'''
-   def calculate_norm_disparity_loss(self):
-        """
-        Calculate regularization loss that penalizes patches with much higher norms than others.
-        Specifically targets outlier patches with unusually high L2 norms.
-        """
-        if self.patch_embeddings is None:
-            return 0.0
-        
-        # Calculate L2 norms for each patch
-        patch_norms = torch.norm(self.patch_embeddings, p=2, dim=-1)  # [B, N]
-        
-        # Find the threshold norm value at the specified percentile
-        threshold = torch.quantile(patch_norms, 95/100.0, dim=-1, keepdim=True)
-        
-        # Calculate how much each patch's norm exceeds the threshold
-        excess_norms = torch.relu(patch_norms - threshold)
-        
-        # Square the excess to more heavily penalize larger deviations
-        loss = torch.mean(excess_norms ** 2)
-        
-        return 0.2 * loss
-
-
-'''

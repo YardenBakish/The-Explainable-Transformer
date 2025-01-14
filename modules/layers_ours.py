@@ -12,7 +12,8 @@ __all__ = ['forward_hook', 'Clone', 'Add', 'Cat', 'ReLU', 'GELU', 'Dropout', 'Ba
            'Sparsemax',
            'RepBN',
            'SiLU', 'WeightNormLinear', 'NormalizedLayerNorm' , 'NormalizedConv2d', 
-           'CustomLRPLayerNorm', 'CustomLRPRMSNorm', 'NormalizedReluAttention', 'CustomLRPBatchNorm']
+           'CustomLRPLayerNorm', 'CustomLRPRMSNorm', 'NormalizedReluAttention', 'CustomLRPBatchNorm',
+           'SNLinear', 'SNConv2d']
 
 
 def _stabilize(input, epsilon=1e-6, inplace=False):
@@ -792,3 +793,194 @@ class Sparsemax(RelProp):
         return sparsemax(X, dim=self.dim, k=self.k, return_support_size=self.return_support_size)
 
 
+
+
+
+
+
+
+
+
+
+
+
+####################################################################
+## Sigma Reparam Layers
+####################################################################
+
+class SpectralNormedWeight(nn.Module):
+    """SpectralNorm Layer. First sigma uses SVD, then power iteration."""
+
+    def __init__(
+        self,
+        weight: torch.Tensor,
+    ):
+        super().__init__()
+        self.weight = weight
+        with torch.no_grad():
+            _, s, vh = torch.linalg.svd(self.weight, full_matrices=False)
+
+        self.register_buffer("u", vh[0])
+        self.register_buffer("spectral_norm", s[0] * torch.ones(1))
+
+    def get_sigma(self, u: torch.Tensor, weight: torch.Tensor):
+        with torch.no_grad():
+            v = weight.mv(u)
+            v = nn.functional.normalize(v, dim=0)
+            u = weight.T.mv(v)
+            u = nn.functional.normalize(u, dim=0)
+            if self.training:
+                self.u.data.copy_(u)
+
+        return torch.einsum("c,cd,d->", v, weight, u) 
+
+    def forward(self):
+        """Normalize by largest singular value and rescale by learnable."""
+        sigma = self.get_sigma(u=self.u, weight=self.weight)
+        if self.training:
+            self.spectral_norm.data.copy_(sigma)
+
+        return self.weight / sigma
+    
+
+class SNLinear(nn.Linear):
+    """Spectral Norm linear from sigmaReparam.
+
+    Optionally, if 'stats_only' is `True`,then we
+    only compute the spectral norm for tracking
+    purposes, but do not use it in the forward pass.
+
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        bias: bool = True,
+        init_multiplier: float = 1.0,
+        stats_only: bool = False,
+    ):
+        super().__init__(in_features, out_features, bias=bias)
+        self.stats_only = stats_only
+        self.init_multiplier = init_multiplier
+
+        self.init_std = 0.02 * init_multiplier
+        nn.init.trunc_normal_(self.weight, std=self.init_std)
+
+        # Handle normalization and add a learnable scalar.
+        self.spectral_normed_weight = SpectralNormedWeight(self.weight)
+        sn_init = self.spectral_normed_weight.spectral_norm
+
+        # Would have set sigma to None if `stats_only` but jit really disliked this
+        self.sigma = (
+            torch.ones_like(sn_init)
+            if self.stats_only
+            else nn.Parameter(
+                torch.zeros_like(sn_init).copy_(sn_init), requires_grad=True
+            )
+        )
+
+        self.register_buffer("effective_spectral_norm", sn_init)
+        self.update_effective_spec_norm()
+
+    def update_effective_spec_norm(self):
+        """Update the buffer corresponding to the spectral norm for tracking."""
+        with torch.no_grad():
+            s_0 = (
+                self.spectral_normed_weight.spectral_norm
+                if self.stats_only
+                else self.sigma
+            )
+            self.effective_spectral_norm.data.copy_(s_0)
+
+    def get_weight(self):
+        """Get the reparameterized or reparameterized weight matrix depending on mode
+        and update the external spectral norm tracker."""
+        normed_weight = self.spectral_normed_weight()
+        self.update_effective_spec_norm()
+        return self.weight if self.stats_only else normed_weight * self.sigma
+
+    def forward(self, inputs: torch.Tensor):
+        self.X  = inputs
+        weight = self.get_weight()
+        res =  F.linear(inputs, weight, self.bias)
+        self.Y = res
+        return res
+    
+    def relprop(self, R, alpha):
+        weight = self.get_weight()
+        beta = alpha - 1
+        pw = torch.clamp(weight, min=0)
+        nw = torch.clamp(weight, max=0)
+        px = torch.clamp(self.X, min=0)
+        nx = torch.clamp(self.X, max=0)
+
+        def f(w1, w2, x1, x2):
+            Z1 = F.linear(x1, w1)
+            Z2 = F.linear(x2, w2)
+            S1 = safe_divide(R, Z1 + Z2)
+            S2 = safe_divide(R, Z1 + Z2)
+            C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
+            C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
+
+            return C1 + C2
+
+        activator_relevances = f(pw, nw, px, nx)
+        inhibitor_relevances = f(nw, pw, px, nx)
+
+        R = alpha * activator_relevances - beta * inhibitor_relevances
+
+        return R
+
+
+
+class SNConv2d(SNLinear):
+        """Spectral norm based 2d conv."""
+
+        def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            kernel_size: None,
+            stride: None,
+            #padding: t.Union[int, t.Iterable[int]] = 0,
+            #dilation: t.Union[int, t.Iterable[int]] = 1,
+            groups: int = 1,
+            bias: bool = True,
+            padding_mode: str = "zeros",  # NB(jramapuram): not used
+            init_multiplier: float = 1.0,
+            stats_only: bool = False,
+        ):
+            #kernel_size = to_2tuple(kernel_size)
+            #stride = to_2tuple(stride)
+            in_features = in_channels * kernel_size[0] * kernel_size[1]
+            super().__init__(
+                in_features,
+                out_channels,
+                bias=bias,
+                init_multiplier=init_multiplier,
+                stats_only=stats_only,
+            )
+
+            assert padding_mode == "zeros"
+            self.kernel_size = kernel_size
+            self.stride = stride
+            #self.padding = padding
+            #self.groups = groups
+            #self.dilation = dilation
+            self.stats_only = stats_only
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            weight = self.get_weight()
+            weight = weight.view(
+                self.out_features, -1, self.kernel_size[0], self.kernel_size[1]
+            )
+            return F.conv2d(
+                x,
+                weight,
+                bias=self.bias,
+                stride=self.stride,
+                #padding=self.padding,
+                #dilation=self.dilation,
+                #groups=self.groups,
+            )
