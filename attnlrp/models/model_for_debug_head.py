@@ -12,7 +12,6 @@ from baselines.ViT.layer_helpers import to_2tuple
 from functools import partial
 import inspect
 import seaborn as sns
-import matplotlib.pyplot as import inspect
 import seaborn as sns
 import matplotlib.pyplot as plt
 
@@ -415,8 +414,8 @@ class Attention(nn.Module):
         '''
 
 
-        '''
-            if 10>= self.depth >=1  :   
+        
+        if 10>= self.depth >=1  :   
                 l2_norms = torch.norm(attn, dim=2)  # [B, H, N]
                 # Random number of patches per batch and head
                 num_patches = torch.randint(1, 6, (b, h), device=attn.device)
@@ -435,7 +434,7 @@ class Attention(nn.Module):
                     mask[batch_idx.squeeze(-1), head_idx.squeeze(-1), :, current_indices] *= (1 - patch_mask[:, :, i:i+1].to(attn.dtype))
                             # Apply mask and rescale
                 attn = attn * mask
-        '''
+        
 
 
 

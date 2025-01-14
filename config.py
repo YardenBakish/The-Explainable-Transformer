@@ -89,6 +89,11 @@ MODEL_VARIANTS = {
             #regularization
             'variant_l2_loss'                  :  {**DEFAULT_MODEL, 'reg_coeffs' : [0.85,0.15]}, 
 
+            #drop high norms
+            'variant_drop_high_norms_preAct'       : {**DEFAULT_MODEL, 'postActivation': False},
+
+            'variant_drop_high_norms_postAct'       : {**DEFAULT_MODEL,'postActivation': True},
+            'variant_drop_high_norms_relu'          : {**DEFAULT_MODEL, 'attn_activation': ReluAttention(), 'postActivation': True},
 }
 
 

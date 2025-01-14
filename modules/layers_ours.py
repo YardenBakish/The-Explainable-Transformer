@@ -415,29 +415,35 @@ class BatchNorm2d(nn.BatchNorm2d, RelProp):
 
 
 class Linear(nn.Linear, RelProp):
-    def relprop(self, R, alpha):
-        beta = alpha - 1
-        pw = torch.clamp(self.weight, min=0)
-        nw = torch.clamp(self.weight, max=0)
-        px = torch.clamp(self.X, min=0)
-        nx = torch.clamp(self.X, max=0)
+    def relprop(self, R, alpha, gamma_rule):
+        if gamma_rule:
+            relevance_norm = R / _stabilize(self.Y, 1e-8, inplace=False)
+            Z = F.linear(self.X, self.weight)
+            grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]
+            return self.X * grads
+        else:
+            beta = alpha - 1
+            pw = torch.clamp(self.weight, min=0)
+            nw = torch.clamp(self.weight, max=0)
+            px = torch.clamp(self.X, min=0)
+            nx = torch.clamp(self.X, max=0)
 
-        def f(w1, w2, x1, x2):
-            Z1 = F.linear(x1, w1)
-            Z2 = F.linear(x2, w2)
-            S1 = safe_divide(R, Z1 + Z2)
-            S2 = safe_divide(R, Z1 + Z2)
-            C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
-            C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
+            def f(w1, w2, x1, x2):
+                Z1 = F.linear(x1, w1)
+                Z2 = F.linear(x2, w2)
+                S1 = safe_divide(R, Z1 + Z2)
+                S2 = safe_divide(R, Z1 + Z2)
+                C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
+                C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
 
-            return C1 + C2
+                return C1 + C2
 
-        activator_relevances = f(pw, nw, px, nx)
-        inhibitor_relevances = f(nw, pw, px, nx)
+            activator_relevances = f(pw, nw, px, nx)
+            inhibitor_relevances = f(nw, pw, px, nx)
 
-        R = alpha * activator_relevances - beta * inhibitor_relevances
+            R = alpha * activator_relevances - beta * inhibitor_relevances
 
-        return R
+            return R
 
 
 
@@ -495,41 +501,41 @@ class WeightNormLinear(Linear):
     super().__init__(in_features, out_features, bias)
     weight_norm(self, name='weight')
   
-  def relprop(self, R, alpha):
-    beta = alpha - 1
-        
-  
-    weight_g = self.parametrizations.weight.original0  # Weight scale
-    weight_v = self.parametrizations.weight.original1  # Weight directio
-  
-    #print(weight_v)
-    #print(self.weight)
+  def relprop(self, R, alpha, gamma_rule):
 
-    weight =  weight_g * (weight_v / torch.norm(weight_v, dim=1)[:,None])
-  
+    if gamma_rule:
+        relevance_norm = R / _stabilize(self.Y, 1e-8, inplace=False)
+        Z = F.linear(self.X, self.weight)
+        grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]
+        return self.X * grads
+    else:
+        beta = alpha - 1
 
+        weight_g = self.parametrizations.weight.original0  # Weight scale
+        weight_v = self.parametrizations.weight.original1  # Weight directio
     
-    #weight = weight + torch.randn_like(weight) * 0.1
-    # Clamp weights and input
-    pw = torch.clamp(self.weight, min=0)
-    nw = torch.clamp(self.weight , max=0)
-    px = torch.clamp(self.X, min=0)
-    nx = torch.clamp(self.X, max=0)
+        weight =  weight_g * (weight_v / torch.norm(weight_v, dim=1)[:,None])
     
-    def f(w1, w2, x1, x2):
-        Z1 = F.linear(x1, w1)
-        Z2 = F.linear(x2, w2)
-        S1 = safe_divide(R, Z1 + Z2)
-        S2 = safe_divide(R, Z1 + Z2)
-        C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
-        C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
-        return C1 + C2
-    activator_relevances = f(pw, nw, px, nx)
-    inhibitor_relevances = f(nw, pw, px, nx)
+        # Clamp weights and input
+        pw = torch.clamp(self.weight, min=0)
+        nw = torch.clamp(self.weight , max=0)
+        px = torch.clamp(self.X, min=0)
+        nx = torch.clamp(self.X, max=0)
 
-    R = alpha * activator_relevances - beta * inhibitor_relevances
+        def f(w1, w2, x1, x2):
+            Z1 = F.linear(x1, w1)
+            Z2 = F.linear(x2, w2)
+            S1 = safe_divide(R, Z1 + Z2)
+            S2 = safe_divide(R, Z1 + Z2)
+            C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
+            C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
+            return C1 + C2
+        activator_relevances = f(pw, nw, px, nx)
+        inhibitor_relevances = f(nw, pw, px, nx)
 
-    return R
+        R = alpha * activator_relevances - beta * inhibitor_relevances
+
+        return R
 
 
 class NormalizedLayerNorm(LayerNorm):
@@ -548,6 +554,15 @@ class Conv2d(nn.Conv2d, RelProp):
         return F.conv_transpose2d(DY, weight, stride=self.stride, padding=self.padding, output_padding=output_padding)
 
     def relprop(self, R, alpha):
+        '''
+        relevance_norm = R / _stabilize(self.Y, 50, inplace=False)
+        Z = F.conv2d(self.X, self.weight, bias=None, stride=self.stride, padding=self.padding)
+        #grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]
+        grads = self.gradprop2(relevance_norm, self.weight)[0]
+        
+        return self.X * grads
+        '''
+
         if self.X.shape[1] == 3:
             pw = torch.clamp(self.weight, min=0)
             nw = torch.clamp(self.weight, max=0)
@@ -907,28 +922,35 @@ class SNLinear(nn.Linear):
         self.Y = res
         return res
     
-    def relprop(self, R, alpha):
-        weight = self.get_weight()
-        beta = alpha - 1
-        pw = torch.clamp(weight, min=0)
-        nw = torch.clamp(weight, max=0)
-        px = torch.clamp(self.X, min=0)
-        nx = torch.clamp(self.X, max=0)
+    def relprop(self, R, alpha, gamma_rule):
 
-        def f(w1, w2, x1, x2):
-            Z1 = F.linear(x1, w1)
-            Z2 = F.linear(x2, w2)
-            S1 = safe_divide(R, Z1 + Z2)
-            S2 = safe_divide(R, Z1 + Z2)
-            C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
-            C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
+        if gamma_rule:
+            relevance_norm = R / _stabilize(self.Y, 1e-8, inplace=False)
+            Z = self.forward(self.X)
+            grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]
+            return self.X * grads
+        else:
+            weight = self.get_weight()
+            beta = alpha - 1
+            pw = torch.clamp(weight, min=0)
+            nw = torch.clamp(weight, max=0)
+            px = torch.clamp(self.X, min=0)
+            nx = torch.clamp(self.X, max=0)
 
-            return C1 + C2
+            def f(w1, w2, x1, x2):
+                Z1 = F.linear(x1, w1)
+                Z2 = F.linear(x2, w2)
+                S1 = safe_divide(R, Z1 + Z2)
+                S2 = safe_divide(R, Z1 + Z2)
+                C1 = x1 * torch.autograd.grad(Z1, x1, S1)[0]
+                C2 = x2 * torch.autograd.grad(Z2, x2, S2)[0]
 
-        activator_relevances = f(pw, nw, px, nx)
-        inhibitor_relevances = f(nw, pw, px, nx)
+                return C1 + C2
 
-        R = alpha * activator_relevances - beta * inhibitor_relevances
+            activator_relevances = f(pw, nw, px, nx)
+            inhibitor_relevances = f(nw, pw, px, nx)
+
+            R = alpha * activator_relevances - beta * inhibitor_relevances
 
         return R
 

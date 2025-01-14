@@ -95,6 +95,8 @@ class Attention(nn.Module):
        
                 attn_activation = Softmax(dim=-1), 
                 isWithBias      = True, 
+                depth           = 0,
+                postActivation = True
              ):
         
         super().__init__()
@@ -105,8 +107,8 @@ class Attention(nn.Module):
         head_dim = dim // num_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = head_dim ** -0.5
-   
-
+        self.depth = depth
+        self.postActivation = postActivation
         # A = Q*K^T
         self.matmul1 = einsum('bhid,bhjd->bhij')
         # attn = A*V
@@ -178,9 +180,35 @@ class Attention(nn.Module):
 
         self.save_v(v)
 
-        dots = self.matmul1([q, k]) * self.scale
+        attn = self.matmul1([q, k]) * self.scale
        
-        attn = self.attn_activation(dots)
+        if self.postActivation == True:
+            attn = self.attn_activation(attn)
+
+
+        if 10>= self.depth >=1  :   
+            l2_norms = torch.norm(attn, dim=2)  # [B, H, N]
+            # Random number of patches per batch and head
+            num_patches = torch.randint(4, 6, (b, h), device=attn.device)
+            mask = torch.ones_like(attn)
+            _, top_indices = torch.topk(l2_norms, k=5, dim=-1)  # [B, H, 5]
+            batch_idx = torch.arange(b, device=attn.device)[:, None, None]
+            head_idx = torch.arange(h, device=attn.device)[None, :, None]
+
+            mask = torch.ones_like(attn)
+ 
+            patch_range = torch.arange(5, device=attn.device)
+            patch_mask = (patch_range[None, None, :] < num_patches[:, :, None])  # [B, H, 5]
+    
+            for i in range(5):
+                current_indices = top_indices[:, :, i]  # [B, H]
+                mask[batch_idx.squeeze(-1), head_idx.squeeze(-1), :, current_indices] *= (1 - patch_mask[:, :, i:i+1].to(attn.dtype))
+                            # Apply mask and rescale
+            attn = attn * mask
+
+        if self.postActivation == False:
+            attn = self.attn_activation(attn)
+
         attn = self.attn_drop(attn)
 
         self.save_attn(attn)
@@ -233,6 +261,8 @@ class Block(nn.Module):
                 layer_norm = partial(LayerNorm, eps=1e-6),
                 activation = GELU,
                 attn_activation = Softmax(dim=-1),
+                depth = 0,
+                postActivation = True
              ):
         super().__init__()
         print(f"Inside block with bias: {isWithBias} | norm : {layer_norm} | activation: {activation} | attn_activation: {attn_activation}  ")
@@ -245,6 +275,8 @@ class Block(nn.Module):
             proj_drop       = projection_drop_rate, 
             attn_activation = attn_activation,
             isWithBias      = isWithBias,
+            depth           = depth,
+            postActivation = postActivation
           
            )
         
@@ -327,6 +359,7 @@ class VisionTransformer(nn.Module):
                 activation = GELU,
                 attn_activation = Softmax(dim=-1),
                 last_norm       = LayerNorm,
+                postActivation = True
                ):
         
         super().__init__()
@@ -351,6 +384,8 @@ class VisionTransformer(nn.Module):
                 layer_norm      = layer_norm,
                 activation      = activation,
                 attn_activation = attn_activation,
+                depth           = i,
+                postActivation = postActivation
                )
             for i in range(depth)])
 
@@ -443,8 +478,6 @@ class VisionTransformer(nn.Module):
             cam = self.patch_embed.relprop(cam, **kwargs)
             # sum on channels
             cam = cam.sum(dim=1)
-            cam = cam.clamp(min=0)
-
             return cam
 
         elif method == "rollout":
@@ -533,6 +566,7 @@ def deit_tiny_patch16_224(pretrained=False,
                           attn_drop_rate  = 0.,
                           FFN_drop_rate   = 0.,
                           projection_drop_rate = 0.,
+                          postActivation       = True,
                         
                           **kwargs):
 
@@ -548,6 +582,7 @@ def deit_tiny_patch16_224(pretrained=False,
         attn_drop_rate  = attn_drop_rate,
         drop_rate       = FFN_drop_rate,
         projection_drop_rate = projection_drop_rate,
+        postActivation = postActivation,
     
         **kwargs)
     

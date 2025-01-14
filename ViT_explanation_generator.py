@@ -24,7 +24,7 @@ class LRP:
 
     def generate_LRP(self, input, index=None, method="transformer_attribution", cp_rule = False, is_ablation=False, start_layer=0):
         output = self.model(input)
-        kwargs = {"alpha": 1}
+        kwargs = {"alpha": 1, "gamma_rule": True if "gamma_rule" in method else False}
         if index == None:
             index = np.argmax(output.cpu().data.numpy(), axis=-1)
 

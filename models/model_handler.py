@@ -46,12 +46,33 @@ from models.variant_sigmaReparam.variant_model_sigmaReparam import deit_tiny_pat
 from models.variant_l2_loss.variant_model_l2_loss_train import deit_tiny_patch16_224 as variant_model_l2_loss_train
 from models.variant_l2_loss.variant_model_l2_loss import deit_tiny_patch16_224 as variant_model_l2_loss
 
+from models.variant_drop_high_norms.variant_model_drop_high_norms import deit_tiny_patch16_224 as variant_model_drop_high_norms
 
 
 #TODO: add support to remaining variants instead of keeping multiple documents with redundant code
 
 def model_env(pretrained=False,args  = None , hooks = False,  **kwargs):
     
+    if 'variant_drop_high_norms' in args.variant :
+        if hooks:
+            return variant_model_drop_high_norms(
+            isWithBias           = args.model_components["isWithBias"],
+            layer_norm           = args.model_components["norm"],
+            last_norm            = args.model_components["last_norm"],
+            attn_drop_rate       = args.model_components["attn_drop_rate"],
+            FFN_drop_rate        = args.model_components["FFN_drop_rate"],
+            projection_drop_rate = args.model_components['projection_drop_rate'],
+
+
+            activation      = args.model_components["activation"],
+            attn_activation = args.model_components["attn_activation"],
+            num_classes     = args.nb_classes,
+            postActivation  = args.model_components["postActivation"]
+        )
+        else:
+            exit(1)
+
+
     if 'variant_l2_loss' in args.variant :
         if hooks:
             return variant_model_l2_loss(
