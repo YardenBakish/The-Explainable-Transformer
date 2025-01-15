@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
-                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule' ],
                         help='')
 
  
@@ -74,6 +74,12 @@ MAPPER_HELPER = {
    'attn act relu normalized': 'Propotional Relu',
    'act relu': 'Relu Act.',
    'variant layer scale relu attn': 'LayerScale w/ ReluAttention',
+   'variant more attn relu': '2xAttentionRelu',
+   'variant patch embed relu': 'Large Emb w/ Relu',
+   'variant patch embed': 'Large Emb',
+   'variant drop high norms preAct': 'RandomDropPreAct',
+   'variant drop high norms postAct': 'RandomDropPostAct',
+   'variant drop high norms relu': 'RandomDropRelu',
 }
 
 

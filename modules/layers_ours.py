@@ -62,11 +62,11 @@ class RelProp(nn.Module):
         C = torch.autograd.grad(Z, X, S, retain_graph=True)
         return C
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         return R
 
 class RelPropSimple(RelProp):
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = self.forward(self.X)
         S = safe_divide(R, Z)
         C = self.gradprop(Z, self.X, S)
@@ -161,7 +161,7 @@ class Add(RelPropSimple):
     def forward(self, inputs):
         return torch.add(*inputs)
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = self.forward(self.X)
         S = safe_divide(R, Z)
         C = self.gradprop(Z, self.X, S)
@@ -196,7 +196,7 @@ class IndexSelect(RelProp):
 
         return torch.index_select(inputs, dim, indices)
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = self.forward(self.X, self.dim, self.indices)
         S = safe_divide(R, Z)
         C = self.gradprop(Z, self.X, S)
@@ -220,7 +220,7 @@ class Clone(RelProp):
 
         return outputs
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = []
         for _ in range(self.num):
             Z.append(self.X)
@@ -236,7 +236,7 @@ class Cat(RelProp):
         self.__setattr__('dim', dim)
         return torch.cat(inputs, dim)
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = self.forward(self.X, self.dim)
         S = safe_divide(R, Z)
         C = self.gradprop(Z, self.X, S)
@@ -266,7 +266,7 @@ class CustomLRPLayerNorm(nn.LayerNorm, RelProp):
        
         return y
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = self.forward(self.X)
         relevance_norm = R[0] / _stabilize(Z, self.eps, False)
         grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
@@ -312,7 +312,7 @@ class CustomLRPBatchNorm(nn.BatchNorm1d, RelProp):
         
         return y
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = self.forward(self.X)
         relevance_norm = R[0] / _stabilize(Z, self.eps, False)
         grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
@@ -343,7 +343,7 @@ class CustomLRPBatchNorm(nn.BatchNorm1d, RelProp):
 
       return x_normalized
    
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
 
      
         Z = self.forward(self.X)
@@ -384,7 +384,7 @@ class CustomLRPRMSNorm(nn.RMSNorm, RelProp):
             self.output11 = y
         return y
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         Z = self.forward(self.X)
         relevance_norm = R[0] / _stabilize(Z, self.eps, False)
         grads= torch.autograd.grad(self.output11, self.X, relevance_norm)[0]
@@ -396,13 +396,13 @@ class CustomLRPRMSNorm(nn.RMSNorm, RelProp):
 
 
 class Sequential(nn.Sequential):
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         for m in reversed(self._modules.values()):
-            R = m.relprop(R, alpha)
+            R = m.relprop(R, alpha, epsilon_rule)
         return R
 
 class BatchNorm2d(nn.BatchNorm2d, RelProp):
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         X = self.X
         beta = 1 - alpha
         weight = self.weight.unsqueeze(0).unsqueeze(2).unsqueeze(3) / (
@@ -415,8 +415,8 @@ class BatchNorm2d(nn.BatchNorm2d, RelProp):
 
 
 class Linear(nn.Linear, RelProp):
-    def relprop(self, R, alpha, gamma_rule):
-        if gamma_rule:
+    def relprop(self, R, alpha, epsilon_rule):
+        if epsilon_rule:
             relevance_norm = R / _stabilize(self.Y, 1e-8, inplace=False)
             Z = F.linear(self.X, self.weight)
             grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]
@@ -501,9 +501,9 @@ class WeightNormLinear(Linear):
     super().__init__(in_features, out_features, bias)
     weight_norm(self, name='weight')
   
-  def relprop(self, R, alpha, gamma_rule):
+  def relprop(self, R, alpha, epsilon_rule):
 
-    if gamma_rule:
+    if epsilon_rule:
         relevance_norm = R / _stabilize(self.Y, 1e-8, inplace=False)
         Z = F.linear(self.X, self.weight)
         grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]
@@ -553,7 +553,7 @@ class Conv2d(nn.Conv2d, RelProp):
 
         return F.conv_transpose2d(DY, weight, stride=self.stride, padding=self.padding, output_padding=output_padding)
 
-    def relprop(self, R, alpha):
+    def relprop(self, R, alpha,epsilon_rule):
         '''
         relevance_norm = R / _stabilize(self.Y, 50, inplace=False)
         Z = F.conv2d(self.X, self.weight, bias=None, stride=self.stride, padding=self.padding)
@@ -922,9 +922,9 @@ class SNLinear(nn.Linear):
         self.Y = res
         return res
     
-    def relprop(self, R, alpha, gamma_rule):
+    def relprop(self, R, alpha, epsilon_rule):
 
-        if gamma_rule:
+        if epsilon_rule:
             relevance_norm = R / _stabilize(self.Y, 1e-8, inplace=False)
             Z = self.forward(self.X)
             grads = torch.autograd.grad(Z, self.X, relevance_norm)[0]

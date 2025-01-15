@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
-                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp'],
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule'],
                         help='')
 
     parser.add_argument('--both',  action='store_true')
@@ -137,8 +137,12 @@ MAPPER_HELPER = {
    'attn act relu normalized': 'Propotional Relu',
    'act relu': 'Relu Act.',
    'variant layer scale relu attn': 'LayerScale w/ ReluAttention',
-
-
+   'variant more attn relu': '2xAttentionRelu',
+   'variant patch embed relu': 'Large Emb w/ Relu',
+   'variant patch embed': 'Large Emb',
+   'variant drop high norms preAct': 'RandomDropPreAct',
+   'variant drop high norms postAct': 'RandomDropPostAct',
+   'variant drop high norms relu': 'RandomDropRelu',
 }
 
 
@@ -342,6 +346,7 @@ def run_perturbations(args):
        print(f"working on epoch {epoch}")
        pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
        pert_results_dir = pert_results_dir if args.method != 'attribution_with_detach' else 'pert_results/attribution_w_detach'
+       pert_results_dir = pert_results_dir if args.method != 'custom_lrp_epsilon_rule' else 'pert_results/custom_lrp_epsilon_rule'
 
        eval_pert_epoch_cmd = f"{eval_pert_cmd} --output-dir {model_dir}/{pert_results_dir}/res_{epoch}"
        if args.normalized_pert == 0:
@@ -365,6 +370,7 @@ def generate_plots(dir_path,args):
     acc_dict = parse_acc_results(acc_results_path)
     pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
     pert_results_dir = pert_results_dir if args.method != 'attribution_with_detach' else 'pert_results/attribution_w_detach'
+    pert_results_dir = pert_results_dir if args.method != 'custom_lrp_epsilon_rule' else 'pert_results/custom_lrp_epsilon_rule'
     
     pert_results_path = os.path.join(dir_path, pert_results_dir)
     pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args)
@@ -440,6 +446,7 @@ def analyze(args):
        acc_dict = parse_acc_results(acc_results_path)
        pert_results_dir = 'pert_results/imagenet_norm_no_crop' if args.default_norm else 'pert_results'
        pert_results_dir = pert_results_dir if args.method != 'attribution_with_detach' else 'pert_results/attribution_w_detach'
+       pert_results_dir = pert_results_dir if args.method != 'custom_lrp_epsilon_rule' else 'pert_results/custom_lrp_epsilon_rule'
 
        pert_results_path = os.path.join(subdir, pert_results_dir)
        pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args, op)

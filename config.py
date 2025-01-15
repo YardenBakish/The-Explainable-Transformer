@@ -182,7 +182,7 @@ def set_components_custom_lrp(args):
             args.model_components['last_norm'] = CustomLRPRMSNorm
 
 
-    if args.method == "custom_lrp":
+    if "custom_lrp" in args.method:
         
         print(f"inside config with custom_lrp")
         if args.variant == "norm_batch":
