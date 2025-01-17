@@ -83,7 +83,7 @@ parser.add_argument('--train_dataset', type=str, default='imagenet', metavar='N'
 parser.add_argument('--method', type=str,
                     default='grad_rollout',
                     choices=[ 'rollout', 'lrp','transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
-                              'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule'],
+                              'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full'],
                     help='')
 parser.add_argument('--thr', type=float, default=0.,
                     help='threshold')
@@ -280,7 +280,9 @@ def eval_batch(image, labels, evaluator, index):
     if 'custom_lrp' in args.method:
         gamma_rule =   True if 'gamma_rule'   in args.method  else False
         epsilon_rule = True if 'epsilon_rule' in args.method or 'gamma_rule' in args.method  else False
-        Res = lrp.generate_LRP(image.cuda(), method="custom_lrp", cp_rule = args.cp_rule,gamma_rule = gamma_rule, epsilon_rule = epsilon_rule).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+        default_op   =  True if 'default_op' in args.method  else False
+
+        Res = lrp.generate_LRP(image.cuda(), method="custom_lrp", cp_rule = args.cp_rule,gamma_rule = gamma_rule, default_op = default_op, epsilon_rule = epsilon_rule).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
     
     elif args.method == 'rollout':
         Res = baselines.generate_rollout(image.cuda(), start_layer=1).reshape(batch_size, 1, 14, 14)

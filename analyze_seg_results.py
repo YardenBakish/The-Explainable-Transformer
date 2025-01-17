@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
-                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule' ],
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full' ],
                         help='')
 
  

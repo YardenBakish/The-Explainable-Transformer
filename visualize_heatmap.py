@@ -57,8 +57,8 @@ def generate_visualization(original_image, class_index=None):
 
 
 
-def generate_visualization_LRP(original_image, class_index=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="full", cp_rule=args.cp_rule, index=class_index).detach()
+def generate_visualization_LRP(original_image, class_index=None, epsilon_rule = False, gamma_rule = False):
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="full", epsilon_rule=epsilon_rule, gamma_rule= gamma_rule, cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(224, 224).cuda().data.cpu().numpy()
     transformer_attribution = (transformer_attribution - transformer_attribution.min()) / (transformer_attribution.max() - transformer_attribution.min())
     image_transformer_attribution = original_image.permute(1, 2, 0).data.cpu().numpy()
@@ -71,8 +71,8 @@ def generate_visualization_LRP(original_image, class_index=None):
     return vis
 
 
-def generate_visualization_custom_LRP(original_image, class_index=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
+def generate_visualization_custom_LRP(original_image, class_index=None, epsilon_rule = False, gamma_rule = False):
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), epsilon_rule=epsilon_rule, gamma_rule= gamma_rule, method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze().detach().cpu().numpy()
@@ -129,7 +129,7 @@ if __name__ == "__main__":
                         help='') #243 - dog , 282 - cat
   parser.add_argument('--method', type=str,
                         default='transformer_attribution',
-                        choices=['transformer_attribution', 'full_lrp', 'custom_lrp'],
+                        choices=['transformer_attribution', 'full_lrp', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'full_lrp_epsilon_rule', 'full_lrp_gamma_rule'],
                         help='')
       
   
@@ -172,11 +172,17 @@ if __name__ == "__main__":
   if args.method == "transformer_attribution":
     vis = generate_visualization(image_transformed, args.class_index)
     method_name = "Att"
-  elif args.method == "custom_lrp":
-    vis = generate_visualization_custom_LRP(image_transformed, args.class_index)
+  elif "custom_lrp" in args.method:
+    epsilon_rule = True if 'epsilon_rule' in args.method or 'gamma_rule' in args.method else False
+    gamma_rule   = True if 'gamma_rule' in args.method else False
+
+    vis = generate_visualization_custom_LRP(image_transformed, args.class_index, epsilon_rule = epsilon_rule, gamma_rule = gamma_rule)
     method_name = "custom_lrp"
   else:
-    vis = generate_visualization_LRP(image_transformed, args.class_index)
+    epsilon_rule = True if 'epsilon_rule' in args.method or 'gamma_rule' in args.method else False
+    gamma_rule   = True if 'gamma_rule' in args.method else False
+
+    vis = generate_visualization_LRP(image_transformed, args.class_index,epsilon_rule = epsilon_rule, gamma_rule = gamma_rule)
     method_name = "lrp"
 
   saved_image_path = f"testing/{img_name}_{method_name}_{args.variant}.png"

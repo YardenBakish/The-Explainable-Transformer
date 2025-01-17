@@ -22,9 +22,9 @@ class LRP:
         self.model = model
         self.model.eval()
 
-    def generate_LRP(self, input, index=None, method="transformer_attribution",gamma_rule = False, epsilon_rule = False, cp_rule = False, is_ablation=False, start_layer=0):
+    def generate_LRP(self, input, index=None, method="transformer_attribution",gamma_rule = False, epsilon_rule = False, cp_rule = False, default_op = True, is_ablation=False, start_layer=0):
         output = self.model(input)
-        kwargs = {"alpha": 1, "epsilon_rule": epsilon_rule, "gamma_rule": gamma_rule}
+        kwargs = {"alpha": 1, "epsilon_rule": epsilon_rule, "gamma_rule": gamma_rule, "default_op": default_op}
         if index == None:
             index = np.argmax(output.cpu().data.numpy(), axis=-1)
 

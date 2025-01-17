@@ -339,7 +339,7 @@ if __name__ == "__main__":
     parser.add_argument('--method', type=str,
                         default='grad_rollout',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'v_gradcam', 'lrp_last_layer',
-                                 'lrp_second_layer', 'gradcam', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule',
+                                 'lrp_second_layer', 'gradcam', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full'
                                  'attn_last_layer', 'attn_gradcam', 'input_grads', 'custom_lrp'],
                         help='')
     parser.add_argument('--vis-class', type=str,

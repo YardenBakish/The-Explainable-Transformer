@@ -119,9 +119,10 @@ def compute_saliency_and_save(args):
             if 'custom_lrp' in args.method:
                  epsilon_rule = True if 'epsilon_rule' in args.method or 'gamma_rule' in args.method else False
                  gamma_rule   = True if 'gamma_rule' in args.method else False
+                 default_op   =  True if 'default_op' in args.method  else False
 
-                 Res_pred   = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, epsilon_rule = epsilon_rule, gamma_rule=gamma_rule, index=None).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
-                 Res_target = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, epsilon_rule = epsilon_rule, gamma_rule=gamma_rule, index=target).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+                 Res_pred   = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, epsilon_rule = epsilon_rule, gamma_rule=gamma_rule, default_op=default_op, index=None).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
+                 Res_target = lrp.generate_LRP(data, method="custom_lrp", cp_rule = args.cp_rule, epsilon_rule = epsilon_rule, gamma_rule=gamma_rule, default_op=default_op, index=target).reshape(14, 14).unsqueeze(0).unsqueeze(0) 
 
             if args.method == 'rollout':
                 print("FIXME: make sure which model is sent out for this method")
@@ -215,7 +216,7 @@ if __name__ == "__main__":
     parser.add_argument('--method', type=str,
                         default='transformer_attribution',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
-                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule'],
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full'],
                         help='')
 
     parser.add_argument('--pin-mem', action='store_true',
