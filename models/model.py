@@ -194,6 +194,7 @@ class Attention(nn.Module):
         return out
 
     def relprop(self, cam = None,cp_rule = False, **kwargs):
+
         cam = self.proj_drop.relprop(cam, **kwargs)
         cam = self.proj.relprop(cam, **kwargs)
         cam = rearrange(cam, 'b n (h d) -> b h n d', h=self.num_heads)
@@ -280,8 +281,11 @@ class Block(nn.Module):
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
+        gamma_rule = kwargs['gamma_rule']
+        kwargs['gamma_rule'] = False
         cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
-      
+        kwargs['gamma_rule'] = gamma_rule
+
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)
         return cam
