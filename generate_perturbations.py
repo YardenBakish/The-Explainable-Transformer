@@ -46,7 +46,7 @@ imagenet_normalize = transforms.Compose([
 def calc_auc(perturbation_steps,matt,op):
     means = []
     for row in matt:
-        non_negative_values = row[row >= 0]
+        non_negative_values = row[row >= -10000000]
         if non_negative_values.size > 0:
             row_mean = np.mean(non_negative_values)
         else:
@@ -77,6 +77,16 @@ def eval(args, mode = None):
     correctence_top_precentage             = np.full((9,len(imagenet_ds)),-1)
     correctence_target_precentage_blurred  = np.full((9,len(imagenet_ds)),-1)
     correctence_top_precentage_blurred     = np.full((9,len(imagenet_ds)),-1)
+    correctence_target_precentage_averaged = np.full((9,len(imagenet_ds)),-1)
+    correctence_top_precentage_averaged    = np.full((9,len(imagenet_ds)),-1)
+
+    logit_pertubed_ARR                  = np.full((9,len(imagenet_ds)),-1,dtype=np.float64)
+    logit_pertubed_blurred_ARR          = np.full((9,len(imagenet_ds)),-1,dtype=np.float64)
+    logit_pertubed_averaged_ARR         = np.full((9,len(imagenet_ds)),-1,dtype=np.float64)
+    probability_pertubed_ARR            = np.full((9,len(imagenet_ds)),-1,dtype=np.float64)
+    probability_pertubed_blurred_ARR    = np.full((9,len(imagenet_ds)),-1,dtype=np.float64)
+    probability_pertubed_averaged_ARR   = np.full((9,len(imagenet_ds)),-1,dtype=np.float64)
+
 
     num_correct_pertub       = np.zeros((9, len(imagenet_ds)))
     dissimilarity_pertub     = np.zeros((9, len(imagenet_ds)))
@@ -114,7 +124,7 @@ def eval(args, mode = None):
         pred_org_logit     = pred.data.max(1, keepdim=True)[0].squeeze(1)
         pred_org_prob      = pred_probabilities.data.max(1, keepdim=True)[0].squeeze(1)
         pred_class         = pred.data.max(1, keepdim=True)[1].squeeze(1)
-        #print(f"PREDICTED CLASS (NO CHANGES) : {pred_class}")
+        
         
         tgt_pred           = (target == pred_class).type(target.type()).data.cpu().numpy()
         num_correct_model[model_index:model_index+len(tgt_pred)] = tgt_pred
@@ -153,6 +163,8 @@ def eval(args, mode = None):
             _data_target_pertubarted         = data.clone()
             _data_blurred_pred_pertubarted   = data.clone()
             _data_blurred_target_pertubarted = data.clone()
+            _data_average_pred_pertubarted   = data.clone()
+            _data_average_target_pertubarted = data.clone()
 
             blurred_data = blur_transform(_data_blurred_pred_pertubarted)
 
@@ -168,16 +180,26 @@ def eval(args, mode = None):
             _data_target_pertubarted         = _data_target_pertubarted.reshape(org_shape[0], org_shape[1], -1)
             _data_blurred_pred_pertubarted   = _data_blurred_pred_pertubarted.reshape(org_shape[0], org_shape[1], -1)
             _data_blurred_target_pertubarted = _data_blurred_target_pertubarted.reshape(org_shape[0], org_shape[1], -1)
-
+            _data_average_pred_pertubarted   = _data_average_pred_pertubarted.reshape(org_shape[0], org_shape[1], -1)
+            _data_average_target_pertubarted = _data_average_target_pertubarted.reshape(org_shape[0], org_shape[1], -1)
+            
+            #for mean
+            mean_pixel0 = _data_average_pred_pertubarted.mean(dim=-1,keepdim = True) 
+            mean_pixel0 =mean_pixel0.expand(-1, -1, idx_pred.size(-1)) 
           
 
 
             _data_pred_pertubarted   = _data_pred_pertubarted.scatter_(-1, idx_pred, 0)
             _data_target_pertubarted = _data_target_pertubarted.scatter_(-1, idx_target, 0)
 
-
             _data_blurred_pred_pertubarted = _data_blurred_pred_pertubarted.scatter_(-1, idx_pred, blurred_data.reshape(org_shape[0], org_shape[1], -1).gather(-1, idx_pred))            
             _data_blurred_target_pertubarted = _data_blurred_target_pertubarted.scatter_(-1, idx_target, blurred_data.reshape(org_shape[0], org_shape[1], -1).gather(-1, idx_target))
+
+            _data_average_pred_pertubarted   = _data_average_pred_pertubarted.scatter_(-1, idx_pred, mean_pixel0 )
+            _data_average_target_pertubarted = _data_average_target_pertubarted.scatter_(-1, idx_target, mean_pixel0 )
+
+
+
 
 
             _data_pred_pertubarted               = _data_pred_pertubarted.reshape(*org_shape)
@@ -185,7 +207,8 @@ def eval(args, mode = None):
             _data_blurred_pred_pertubarted       = _data_blurred_pred_pertubarted.reshape(*org_shape)
             _data_blurred_target_pertubarted     = _data_blurred_target_pertubarted.reshape(*org_shape)
 
-
+            _data_average_pred_pertubarted       = _data_average_pred_pertubarted.reshape(*org_shape)
+            _data_average_target_pertubarted     = _data_average_target_pertubarted.reshape(*org_shape)
           
 
        
@@ -201,19 +224,39 @@ def eval(args, mode = None):
             _norm_data_target_pertubarted          = imagenet_normalize(_data_target_pertubarted)
             _norm_data_blurred_pred_pertubarted    = imagenet_normalize(_data_blurred_pred_pertubarted)
             _norm_data_blurred_target_pertubarted  = imagenet_normalize(_data_blurred_target_pertubarted)
-
-
+            _norm_data_average_pred_pertubarted    = imagenet_normalize(_data_average_pred_pertubarted)
+            _norm_data_average_target_pertubarted  = imagenet_normalize(_data_average_target_pertubarted)
+            
             out_data_pred_pertubarted           = model(_norm_data_pred_pertubarted)
             out_data_target_pertubarted         = model(_norm_data_target_pertubarted)
             out_data_blurred_pred_pertubarted   = model(_norm_data_blurred_pred_pertubarted)
             out_data_blurred_target_pertubarted = model(_norm_data_blurred_target_pertubarted)
+            out_data_average_pred_pertubarted   = model(_norm_data_average_pred_pertubarted)
+            out_data_average_target_pertubarted = model(_norm_data_average_target_pertubarted)
+
+            logit_pertubed_predicted            = out_data_pred_pertubarted[:,pred_class].data.cpu().numpy()
+            logit_pertubed_predicted_blurred    = out_data_blurred_pred_pertubarted[:,pred_class].data.cpu().numpy()
+            logit_pertubed_predicted_average    = out_data_average_pred_pertubarted[:,pred_class].data.cpu().numpy()
 
 
-            pred_probabilities = torch.softmax(out_data_pred_pertubarted, dim=1)
+
+            pred_probabilities         = torch.softmax(out_data_pred_pertubarted, dim=1)
+            pred_probabilities_blurred = torch.softmax(out_data_blurred_pred_pertubarted, dim=1)
+            pred_probabilities_average = torch.softmax(out_data_average_pred_pertubarted, dim=1)
+
+
+            prob_pertubed_predicted         = pred_probabilities[:,pred_class].data.cpu().numpy()
+            prob_pertubed_predicted_blurred = pred_probabilities_blurred[:,pred_class].data.cpu().numpy()
+            prob_pertubed_predicted_average = pred_probabilities_average[:,pred_class].data.cpu().numpy()
+
+
+
             pred_prob = pred_probabilities.data.max(1, keepdim=True)[0].squeeze(1)
             
-            pred_class_pertubtated      = out_data_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
-            pred_class_pertubtated_blur = out_data_blurred_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+            pred_class_pertubtated         = out_data_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+            pred_class_pertubtated_blur    = out_data_blurred_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+            pred_class_pertubtated_average = out_data_average_pred_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+
 
 
 
@@ -226,19 +269,27 @@ def eval(args, mode = None):
 
             target_class         = out_data_target_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
             target_class_blurred = out_data_blurred_target_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+            target_class_average = out_data_average_target_pertubarted.data.max(1, keepdim=True)[1].squeeze(1)
+
 
 
             temp        = (target == target_class).type(target.type()).data.cpu().numpy()
             tempBlurred = (target == target_class_blurred).type(target.type()).data.cpu().numpy()
+            tempAverage = (target == target_class_average).type(target.type()).data.cpu().numpy()
+
 
 
             isCorrectOnInitPred        = (pred_class == pred_class_pertubtated).type(target.type()).data.cpu().numpy()[0]
             isCorrectOnInitPredBlurred = (pred_class == pred_class_pertubtated_blur).type(target.type()).data.cpu().numpy()[0]
+            isCorrectOnInitPredAverage = (pred_class == pred_class_pertubtated_average).type(target.type()).data.cpu().numpy()[0]
+
             
 
 
             isCorrect =temp[0]
             isCorrectBlurred =tempBlurred[0]
+            isCorrectAverage =tempAverage[0]
+
 
 
             num_correct_pertub[i, perturb_index:perturb_index+len(temp)] = temp
@@ -251,10 +302,23 @@ def eval(args, mode = None):
             #print(i,batch_idx)
             correctence_top_precentage[i,batch_idx]               = isCorrectOnInitPred
             correctence_top_precentage_blurred[i,batch_idx]       = isCorrectOnInitPredBlurred
+            correctence_top_precentage_averaged[i,batch_idx]      = isCorrectOnInitPredAverage
+
 
             correctence_target_precentage[i,batch_idx]            = isCorrect
             correctence_target_precentage_blurred[i,batch_idx]    = isCorrectBlurred
+            correctence_target_precentage_averaged[i,batch_idx]   = isCorrectAverage
 
+
+            logit_pertubed_ARR[i,perturb_index:perturb_index+len(temp)]       = logit_pertubed_predicted
+            probability_pertubed_ARR[i,perturb_index:perturb_index+len(temp)] = prob_pertubed_predicted
+
+            logit_pertubed_blurred_ARR[i,perturb_index:perturb_index+len(temp)] =  logit_pertubed_predicted_blurred
+            probability_pertubed_blurred_ARR[i,perturb_index:perturb_index+len(temp)] = prob_pertubed_predicted_blurred
+
+            
+            logit_pertubed_averaged_ARR[i,perturb_index:perturb_index+len(temp)] = logit_pertubed_predicted_average
+            probability_pertubed_averaged_ARR[i,perturb_index:perturb_index+len(temp)] = prob_pertubed_predicted_average
 
 
         model_index += len(target)
@@ -272,22 +336,37 @@ def eval(args, mode = None):
     op1 = "target"
     op2 = "top"
 
- 
+    final_res = {}
         
-    res_target = calc_auc(perturbation_steps,correctence_target_precentage,op1)
-    res_top    = calc_auc(perturbation_steps,correctence_top_precentage,op2)
+    res_target       = calc_auc(perturbation_steps,correctence_target_precentage,op1)
+    res_top          = calc_auc(perturbation_steps,correctence_top_precentage,op2)  
     
-    res_top.update(res_target)
+    res_target_blur  = calc_auc(perturbation_steps,correctence_target_precentage_blurred, f'{op1}_blur')
+    res_top_blur     = calc_auc(perturbation_steps,correctence_top_precentage_blurred,f'{op2}_blur')
+
+    res_target_avg   = calc_auc(perturbation_steps,correctence_target_precentage_averaged, f'{op1}_average')
+    res_top_avg      = calc_auc(perturbation_steps,correctence_top_precentage_averaged,f'{op2}_average')
+    
+    final_res_binary = {**res_target, **res_top,**res_target_blur,**res_top_blur,**res_target_avg,**res_top_avg}
+    logits           = calc_auc(perturbation_steps,logit_pertubed_ARR,"logits")
+    confidece        = calc_auc(perturbation_steps,probability_pertubed_ARR,"probalities")
+
+    logits_blur           = calc_auc(perturbation_steps,logit_pertubed_blurred_ARR,"logits_blur")
+    confidece_blur        = calc_auc(perturbation_steps,probability_pertubed_blurred_ARR,"probalities_blur")
+
+    logits_average          = calc_auc(perturbation_steps,logit_pertubed_averaged_ARR,"logits_average")
+    confidece_average        = calc_auc(perturbation_steps,probability_pertubed_averaged_ARR,"probalities_average")
+
+
+    final_res_logits = {**logits, **confidece,**logits_blur,**confidece_blur,**logits_average,**confidece_average}
+
+    final_res = {**final_res_binary, **final_res_logits}
+
     if args.output_dir:
-        update_json(f"{args.output_dir}/pert_results.json", res_top)
+        update_json(f"{args.output_dir}/pert_results.json", final_res)
 
     
-    res_target = calc_auc(perturbation_steps,correctence_target_precentage_blurred, f'{op1}_blur')
-    res_top = calc_auc(perturbation_steps,correctence_top_precentage_blurred,f'{op2}_blur')
-
-    res_top.update(res_target)
-    if args.output_dir:
-        update_json(f"{args.output_dir}/pert_results.json", res_top)
+   
     #print(np.mean(num_correct_model), np.std(num_correct_model))
     #print(np.mean(dissimilarity_model), np.std(dissimilarity_model))
     #print(perturbation_steps)
@@ -339,7 +418,7 @@ if __name__ == "__main__":
     parser.add_argument('--method', type=str,
                         default='grad_rollout',
                         choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'v_gradcam', 'lrp_last_layer',
-                                 'lrp_second_layer', 'gradcam', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full'
+                                 'lrp_second_layer', 'gradcam', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full',
                                  'attn_last_layer', 'attn_gradcam', 'input_grads', 'custom_lrp'],
                         help='')
     parser.add_argument('--vis-class', type=str,

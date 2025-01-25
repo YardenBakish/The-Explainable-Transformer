@@ -280,7 +280,10 @@ class Block(nn.Module):
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
+        gamma_rule = kwargs['gamma_rule']
+        kwargs['gamma_rule'] = False
         cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
+        kwargs['gamma_rule'] = gamma_rule
       
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)

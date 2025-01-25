@@ -287,13 +287,20 @@ class Block(nn.Module):
 
     def relprop(self, cam = None, cp_rule = False, **kwargs):
         (cam1, cam2) = self.add2.relprop(cam, **kwargs)
+        gamma_rule = kwargs['gamma_rule']
+        if isinstance(self.mlp, Attention):
+            kwargs['gamma_rule'] = False
         cam2 = self.mlp.relprop(cam2, **kwargs)
+        kwargs['gamma_rule'] = gamma_rule
        
         cam2 = self.norm2.relprop(cam2, **kwargs)
         cam = self.clone2.relprop((cam1, cam2), **kwargs)
 
         (cam1, cam2) = self.add1.relprop(cam, **kwargs)
+        if isinstance(self.attn, Attention):
+            kwargs['gamma_rule'] = False
         cam2 = self.attn.relprop(cam2,cp_rule=cp_rule, **kwargs)
+        kwargs['gamma_rule'] = gamma_rule
       
         cam2 = self.norm1.relprop(cam2, **kwargs)
         cam = self.clone1.relprop((cam1, cam2), **kwargs)

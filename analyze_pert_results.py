@@ -17,6 +17,7 @@ def parse_args():
                         default=0.1,
                         help='')
 
+    parser.add_argument('--analyze-all-lrp', action='store_true')
     
     parser.add_argument('--pass-vis', action='store_true')
     parser.add_argument('--gen-latex', action='store_true')
@@ -111,9 +112,12 @@ def parse_args():
 
 
 
+ALL_LRP_SUBDIRS = ['imagenet_norm_no_crop', 'custom_lrp_gamma_rule_full', 'custom_lrp_gamma_rule_default_op' ]
+
+
 MAPPER_HELPER = {
-   'basic': 'DeiT-tiny (fine-tuned)',
-   'attn act relu': 'Relu/seqlen',
+  'basic': r'\underline{DeiT-tiny}',
+   'attn act relu': 'ReluAttetnion w/ cp',
    'act softplus':   'Softplus Act.',
    'act softplus norm rms': 'Softplus+RMSNorm',
    'norm rms': 'RMSNorm',
@@ -125,9 +129,11 @@ MAPPER_HELPER = {
    'variant more ffn': '2XFFN',
    'variant more attn': '2XAttention',
    'variant simplified blocks': 'DeiT-tiny w/o normalization',
-   'attn act sigmoid': 'sigmoid attention',
-   'attn act relu no cp': 'Relu/seqlen w/o cp',
-   'norm batch':           'BatchNorm',
+   'attn act sigmoid': 'SigmoidAttention',
+   'attn act relu no cp': 'ReluAttention',
+   'norm batch':           'RepBN (BatchNorm)',
+   'custom_lrp': 'lrp',
+   'transformer_attribution': 'transformer attribution',
    'variant weight normalization': 'WeightNormalization',
    'variant diff attn': 'DiffTransformer',
    'variant diff attn relu': 'DiffTransformer w/ Relu',
@@ -136,58 +142,116 @@ MAPPER_HELPER = {
    'variant relu softmax': 'Relu m.w/ Softmax',
    'attn act relu normalized': 'Propotional Relu',
    'act relu': 'Relu Act.',
-   'variant layer scale relu attn': 'LayerScale w/ ReluAttention',
+   'variant layer scale relu attn': 'ReluAttention w/ LayerScale',
    'variant more attn relu': '2xAttentionRelu',
    'variant patch embed relu': 'Large Emb w/ Relu',
    'variant patch embed': 'Large Emb',
    'variant drop high norms preAct': 'RandomDropPreAct',
    'variant drop high norms postAct': 'RandomDropPostAct',
    'variant drop high norms relu': 'RandomDropRelu',
+   'custom_lrp_gamma_rule_default_op': r'(semi-$\gamma$-rule)',
+   'custom_lrp_gamma_rule_full': r'($\gamma$-rule)',
+   'attribution_w_detach': r'($\alpha\beta$-rule)',
+   'custom_lrp': r'($\alpha\beta$-rule)',
+   'imagenet_norm_no_crop': r'($\alpha\beta$-rule)'
 }
 
 
-def gen_latex_table(global_top_mapper,args):
+CONFIGURATIONS_FOR_LATEX = {
+   'black_blur': {
+      'lvl1': ['','_blur'],
+      'lvl3': ["top", "target"],
+      'headers': ["Black", "Blurred"],
+      'labels_lvl3': ['Predicted', 'Target']
+   },
+   'black_average': {
+      'lvl1': ['','_average'],
+      'lvl3': ["top", "target"],
+      'headers': ["Black", "Averaged"],
+      'labels_lvl3': ['Predicted', 'Target']
+   },
+   'logits': {
+      'lvl1': ['', '_blur', '_average'],
+      'lvl3': ["logits"],
+      'headers': ["Black", "Blurred", "Averaged"],
+      'labels_lvl3': ['logits'],
+      'noScale': True,
+      'diff_column': True
+   },
 
-   ops      = ["top", "target"] 
-   if args.normalized_pert == 0:
-      ops   =   ["top_blur", "target_blur" ] + ops
+   'probalities': {
+      'lvl1': ['', '_blur', '_average'],
+      'lvl3': ["probalities"],
+      'headers': ["Black", "Blurred", "Averaged"],
+      'labels_lvl3': ['probalities'],
+      'noScale': True,
+      'diff_column': True
+   }
+}
 
-   # Start the LaTeX table
+def gen_latex_table(global_top_mapper,args, config):
+
+   lvl1         = config['lvl1']           #[["top", "target"], ["logits", "probalities"] ] 
+   lvl3         = config['lvl3']           #[["top", "target"], ["logits", "probalities"] ] 
+   labels_lvl3  = config['labels_lvl3']
+   headers      = config['headers']
+   diff_column  = 'diff_column' in config
+   num_mid_lvl_col = 2 if diff_column == False else 3
+   noScale = True if 'noScale' in config else False
+
+   num_columns = len(headers) * num_mid_lvl_col * len(labels_lvl3)
+   #pert_type= ['blur','average']
  
-   latex_code = r'\begin{table}[h!]\centering' + '\n' + r'\begin{tabular}{c c c c c| c c c c}' + '\n'
+
+
+         # Start the LaTeX table
+
+   latex_code = r'\begin{table}[h!]\centering' + '\n' + r'\begin{tabular}{c'
+   for i in range(num_columns):
+      if ((i % (len(headers) * num_mid_lvl_col)) == 0) and i !=0 :
+         latex_code += ' | '
+      latex_code += ' c'
+
+   latex_code+= '}'
    latex_code += r'\hline' + '\n'
-   
+
    header_row = ''
+   a_values = lvl1
 
-
-   a_values = ['']
-   if args.normalized_pert == 0:
-      a_values += ['_blur']
-   
    b_values = ['neg_', 'pos_']
-   c_values = ['top', 'target']
 
-   x_values = ['Black']
-   if args.normalized_pert == 0:
-      x_values += ['Blur']
-   
+
+
+   c_values = lvl3
    y_values = ['Negative', 'Positive']
-   z_values = ['Predicted', 'Target']
 
+   if diff_column:
+      b_values += ['diff_']
+      y_values += ['DIff']
+      for experiment in global_top_mapper:
+         for a in a_values:
+            for c in c_values:
+               global_top_mapper[experiment][f'diff_{c+a}'] = global_top_mapper[experiment][f'neg_{c+a}'] - global_top_mapper[experiment][f'pos_{c+a}']
+
+   x_values = headers
+     
+
+   z_values = labels_lvl3
+   num_col_per_title = num_columns// len(headers)
    for x in x_values:
-      header_row += f' & \\multicolumn{{4}}{{c|}}{{{x}}}'
+      header_row += f' & \\multicolumn{{{num_col_per_title}}}{{c|}}{{{x}}}'
    header_row += r'\\ \hline' + '\n'
 
 
-   # Header for y and z values
+         # Header for y and z values
    subheader_row = ''
    for x in x_values:
       for y in y_values:
-         subheader_row += f' & \\multicolumn{{2}}{{c}}{{{y}}}'
+         subheader_row += f' & \\multicolumn{{{len(labels_lvl3)}}}{{c}}{{{y}}}'
    subheader_row += r'\\ ' + '\n'
 
 
-       # Header for z values
+             # Header for z values
    subsubheader_row = ''
    for x in x_values:
       for y in y_values:
@@ -196,30 +260,42 @@ def gen_latex_table(global_top_mapper,args):
    subsubheader_row += r'\\ ' + '\n'
 
 
-   latex_code = latex_code + header_row + subheader_row + subsubheader_row
+   latex_code = latex_code + header_row
+   if len(labels_lvl3) == 1:
+      latex_code = latex_code + subheader_row 
+   else: 
+      latex_code = latex_code+  subheader_row + subsubheader_row
    for experiment in global_top_mapper:
-      row = MAPPER_HELPER[experiment]
+      best_rule = global_top_mapper[experiment]["best_rule"]
+      row = f'{MAPPER_HELPER[experiment]} {best_rule}' 
       for a in a_values:
          for b in b_values:
             for c in c_values:
-              
-               row += f' & {100*global_top_mapper[experiment][b+c+a]:.3f}'
-               print(row)
+               val = global_top_mapper[experiment][b+c+a]
+               if noScale == False:
+                  val *=100
+               row += f' & {val:.3f}'
+             
       row += r'\\ ' + '\n'
       latex_code += row
-    
+
    latex_code += "\\hline\n\\end{tabular}\n\\caption{Positive AUC}\n\\end{table}"
    print(latex_code)
-   
-   
-  
+   print("\n\n")
 
-def parse_pert_results(pert_results_path, acc_keys, args, op):
+   
+
+
+
+def parse_pert_results(pert_results_path=None, acc_keys=None, args=None, metric=None, optional_method = None ):
     pos_values = {}
     neg_values = {}
     pos_lists = {}    
     neg_lists = {} 
     
+    method = args.method if optional_method == None else optional_method
+
+ 
     for res_dir in os.listdir(pert_results_path):
         res_path = os.path.join(pert_results_path, res_dir)
         if os.path.isdir(res_path):
@@ -237,13 +313,13 @@ def parse_pert_results(pert_results_path, acc_keys, args, op):
             pert_results_file = os.path.join(res_path, 'pert_results.json')
             with open(pert_results_file, 'r') as f:
                 pert_data = json.load(f)
-                if f'{args.method}_pos_auc_{op}' not in  pert_data:
+                if f'{method}_pos_auc_{metric}' not in  pert_data:
                    continue
-                pos_values[res_key] = pert_data.get(f'{args.method}_pos_auc_{op}', 0)
-                neg_values[res_key] = pert_data.get(f'{args.method}_neg_auc_{op}', 0)
+                pos_values[res_key] = pert_data.get(f'{method}_pos_auc_{metric}', 0)
+                neg_values[res_key] = pert_data.get(f'{method}_neg_auc_{metric}', 0)
 
-                pos_lists[res_key] = pert_data.get(f'{args.method}_pos_{op}', [])
-                neg_lists[res_key] = pert_data.get(f'{args.method}_neg_{op}', [])
+                pos_lists[res_key] = pert_data.get(f'{method}_pos_{metric}', [])
+                neg_lists[res_key] = pert_data.get(f'{method}_neg_{metric}', [])
     
     return pos_values, neg_values, pos_lists, neg_lists
 
@@ -378,7 +454,7 @@ def generate_plots(dir_path,args):
     pert_results_dir = pert_results_dir if args.method != 'custom_lrp_gamma_rule_full' else 'pert_results/custom_lrp_gamma_rule_full'
     
     pert_results_path = os.path.join(dir_path, pert_results_dir)
-    pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args)
+    pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path=pert_results_path,acc_dict= acc_dict.keys(),args=args)
 
     # Sort the keys (x-axis)
     sorted_keys = sorted(acc_dict.keys())
@@ -416,7 +492,8 @@ def analyze(args):
    root_dir = f"{args.dirs['finetuned_models_dir']}{args.data_set}"
    ops      = ["target", "top"] 
    if args.normalized_pert == 0:
-      ops+=   ["target_blur", "top_blur"] 
+      ops+=   ["target_blur", "top_blur", "target_average", "top_average", "logits", "logits_blur", "logits_average",
+                "probalities", "probalities_blur", "probalities_average"] 
 
    print(f"variants to consider: {choices}")
    print(f"operating on : {root_dir}")
@@ -455,38 +532,57 @@ def analyze(args):
        pert_results_dir = pert_results_dir if args.method != 'custom_lrp_gamma_rule_default_op' else 'pert_results/custom_lrp_gamma_rule_default_op'
        pert_results_dir = pert_results_dir if args.method != 'custom_lrp_gamma_rule_full' else 'pert_results/custom_lrp_gamma_rule_full'
 
-       pert_results_path = os.path.join(subdir, pert_results_dir)
-       pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(pert_results_path, acc_dict.keys(),args, op)
-       tmp_max_neg         = -float('inf')
-       exp = parse_subdir(subdir)
+     
+       path_results_dirs_path = [pert_results_dir]
 
-
-       if exp not in global_top_mapper:
-          global_top_mapper[exp] = {}
-
+       if args.analyze_all_lrp:
+          path_results_dirs_path = [f'pert_results/{elem}' for elem in ALL_LRP_SUBDIRS]
        
-       for key, neg_value in neg_dict.items():
-         neg_list.append((neg_value, pos_dict[key], subdir, key, acc_dict[key]))
-         
-         if exp not in best_exp:
-            best_exp[exp] = neg_lists[key]
-            tmp_max_neg   = neg_value
-            global_top_mapper[exp][f"neg_{op}"] = neg_value
-            global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
-         else:
-            if neg_value > tmp_max_neg:
-               best_exp[exp] = neg_lists[key]
-               tmp_max_neg   = neg_value
-               global_top_mapper[exp][f"neg_{op}"] = neg_value
-               global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
-         
-         
-         
-         if neg_value > max_neg_global:
-            pos_val = pos_dict[key]
-            max_neg_global = neg_value
-            max_neg_subdir = subdir
-            max_neg_key = key
+       tmp_max_neg         = -float('inf')
+       
+       for path_dir in path_results_dirs_path:
+         pert_results_path = os.path.join(subdir, path_dir )
+         method = path_dir.split("/")[-1] if args.analyze_all_lrp else None
+         if method != None and method == "imagenet_norm_no_crop":
+            method  = "custom_lrp"
+         pos_dict, neg_dict, pos_lists, neg_lists = parse_pert_results(
+                                                                       pert_results_path=pert_results_path, 
+                                                                       acc_keys= acc_dict.keys(),args=args,
+                                                                         metric=op, optional_method = method)
+         exp = parse_subdir(subdir)
+   
+
+         if exp not in global_top_mapper:
+            global_top_mapper[exp] = {}
+
+
+         for key, neg_value in neg_dict.items():
+           neg_list.append((neg_value, pos_dict[key], subdir, key, acc_dict[key]))
+
+           if exp not in best_exp:
+              best_exp[exp] = neg_lists[key]
+              tmp_max_neg   = neg_value
+          
+              global_top_mapper[exp][f"neg_{op}"] = neg_value
+              global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
+              global_top_mapper[exp][f"best_rule"] = MAPPER_HELPER[path_dir.split("/")[-1]]
+           else:
+              if neg_value > tmp_max_neg:
+                 best_exp[exp] = neg_lists[key]
+                 tmp_max_neg   = neg_value
+                 global_top_mapper[exp][f"neg_{op}"] = neg_value
+                 global_top_mapper[exp][f"pos_{op}"] = pos_dict[key]
+                 global_top_mapper[exp][f"best_rule"] = MAPPER_HELPER[path_dir.split("/")[-1]]
+                 
+
+
+
+
+           if neg_value > max_neg_global:
+              pos_val = pos_dict[key]
+              max_neg_global = neg_value
+              max_neg_subdir = subdir
+              max_neg_key = key
        
        for key, pos_value in pos_dict.items():
           pos_list.append((pos_value, neg_dict[key], subdir, key, acc_dict[key] ))
@@ -522,13 +618,15 @@ def analyze(args):
          plt.savefig(f'{root_dir}plot_{op}.png')
    
    if args.gen_latex:
-      gen_latex_table(global_top_mapper,args)
+      for conf in CONFIGURATIONS_FOR_LATEX:
+         gen_latex_table(global_top_mapper,args,CONFIGURATIONS_FOR_LATEX[conf])
 
 
 
 
 if __name__ == "__main__":
     args                   = parse_args()
+  
     config.get_config(args, skip_further_testing = True, get_epochs_to_perturbate = True)
 
     if args.mode == "perturbations":

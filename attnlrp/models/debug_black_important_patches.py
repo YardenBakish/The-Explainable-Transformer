@@ -76,8 +76,8 @@ def generate_visualization_LRP(original_image, class_index=None, i=None):
     return vis
 
 
-def generate_visualization_custom_LRP(batch_idx, thr, original_image, class_index=None,i=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(),  method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
+def generate_visualization_custom_LRP(batch_idx, thr, original_image, class_index=None,i=None, gamma_rule = None, epsilon_rule = None, default_op = None):
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(),  method="custom_lrp", cp_rule=args.cp_rule, index=class_index, gamma_rule= gamma_rule, epsilon_rule=epsilon_rule, default_op=default_op).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze()
@@ -156,7 +156,8 @@ if __name__ == "__main__":
                         help='') #243 - dog , 282 - cat
   parser.add_argument('--method', type=str,
                         default='transformer_attribution',
-                        choices=['transformer_attribution', 'full_lrp', 'custom_lrp'],
+                        choices=['rollout', 'lrp', 'transformer_attribution', 'attribution_with_detach', 'full_lrp', 'lrp_last_layer',
+                                 'attn_last_layer', 'attn_gradcam', 'custom_lrp', 'custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full'],
                         help='')
       
   
@@ -235,11 +236,12 @@ if __name__ == "__main__":
         print_top_classes(output)
         generate_visualization(batch_idx, data, args.class_index)
        
-     elif args.method == "custom_lrp":
-       output = model(data.cuda())
-       print_top_classes(output)
-       for thr in [10000,]:
-        generate_visualization_custom_LRP(batch_idx,thr, data.squeeze(0), args.class_index,batch_idx)
+     if 'custom_lrp' in args.method:
+      epsilon_rule = True if 'epsilon_rule' in args.method or 'gamma_rule' in args.method else False
+      gamma_rule   = True if 'gamma_rule' in args.method else False
+      default_op   =  True if 'default_op' in args.method  else False
+      for thr in [10000,]:
+         generate_visualization_custom_LRP(batch_idx,thr, data.squeeze(0), args.class_index,batch_idx, epsilon_rule=epsilon_rule, gamma_rule = gamma_rule, default_op = default_op)
   
      else:
        generate_visualization_LRP(data, args.class_index,batch_idx)

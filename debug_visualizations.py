@@ -77,8 +77,8 @@ def generate_visualization_LRP(original_image, class_index=None, i=None):
     return vis
 
 
-def generate_visualization_custom_LRP(batch_idx, original_image, class_index=None,i=None):
-    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="custom_lrp", cp_rule=args.cp_rule, index=class_index).detach()
+def generate_visualization_custom_LRP(batch_idx, original_image, class_index=None,i=None,  epsilon_rule = False, gamma_rule = False, default_op = True):
+    transformer_attribution = attribution_generator.generate_LRP(original_image.unsqueeze(0).cuda(), method="custom_lrp", epsilon_rule = epsilon_rule, gamma_rule=gamma_rule,default_op=default_op,   cp_rule=args.cp_rule, index=class_index).detach()
     transformer_attribution = transformer_attribution.reshape(14, 14).unsqueeze(0).unsqueeze(0)
     transformer_attribution = torch.nn.functional.interpolate(transformer_attribution, scale_factor=16, mode='bilinear', align_corners=False)
     transformer_attribution = transformer_attribution.squeeze().detach().cpu().numpy()
@@ -138,7 +138,7 @@ if __name__ == "__main__":
                         help='') #243 - dog , 282 - cat
   parser.add_argument('--method', type=str,
                         default='transformer_attribution',
-                        choices=['transformer_attribution', 'full_lrp', 'custom_lrp'],
+                        choices=['transformer_attribution', 'full_lrp', 'custom_lrp','custom_lrp_epsilon_rule', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full'],
                         help='')
       
   
@@ -147,8 +147,6 @@ if __name__ == "__main__":
   config.get_config(args, skip_further_testing = True, get_epochs_to_perturbate = True)
   config.set_components_custom_lrp(args)
 
-  image = Image.open(args.sample_path)
-  image_transformed = transform(image)
 
   
   if args.data_set == "IMNET100":
@@ -169,8 +167,7 @@ if __name__ == "__main__":
   model.eval()
   attribution_generator = LRP(model)
 
-  output = model(image_transformed.unsqueeze(0).cuda())
-  print_top_classes(output)
+
 
   filename = os.path.basename(args.sample_path)
     # Remove the file extension
@@ -215,8 +212,12 @@ if __name__ == "__main__":
      if args.method == "transformer_attribution":
        vis = generate_visualization(batch_idx, data, args.class_index)
        method_name = "Att"
-     elif args.method == "custom_lrp":
-       vis = generate_visualization_custom_LRP(batch_idx, data.squeeze(0), args.class_index,batch_idx)
+     elif  "custom_lrp" in args.method:
+       epsilon_rule = True if 'epsilon_rule' in args.method or 'gamma_rule' in args.method else False
+       gamma_rule   = True if 'gamma_rule' in args.method else False
+       default_op   = True if 'default_op' in args.method else False
+
+       vis = generate_visualization_custom_LRP(batch_idx, data.squeeze(0), args.class_index,batch_idx, epsilon_rule = epsilon_rule, gamma_rule = gamma_rule, default_op = default_op)
        method_name = "custom_lrp"
      else:
        vis = generate_visualization_LRP(data, args.class_index,batch_idx)

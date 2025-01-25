@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader, Subset, SubsetRandomSampler
 from torchvision import datasets, transforms
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
+NUM_STEPS = 10
 
 import cv2
 normalize = transforms.Normalize(mean=IMAGENET_DEFAULT_MEAN, std=IMAGENET_DEFAULT_STD)
@@ -67,8 +68,8 @@ def compute_SaCo(mapper,img_idx):
     pred_x_G = mapper[img_idx]['perturbated_predicitions_diff']  # the list of ∇pred(x, Gi)
 
     # Traverse all combinations of Gi and Gj
-    for i in range(10 - 1):
-        for j in range(i + 1, 10):
+    for i in range(NUM_STEPS - 1):
+        for j in range(i + 1, NUM_STEPS):
             if pred_x_G[i] >= pred_x_G[j]:
                 weight = s_G[i] - s_G[j]
             else:
@@ -179,7 +180,7 @@ def generate_visualization_custom_LRP(batch_idx, thr, original_image, class_inde
 def calculate_predictions_custom_lrp(batch_idx, thr, original_image, class_index=None,i=None, mapper = None):
     
     mapper[batch_idx] = {}
-    perturbation_steps = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    perturbation_steps = [i/NUM_STEPS for i in range(NUM_STEPS+1)]
     image_transformed = imagenet_normalize(original_image)
     output = model(image_transformed.unsqueeze(0).cuda()).detach()
     class_pred_idx = output.data.topk(1, dim=1)[1][0].tolist()[0]
@@ -201,9 +202,15 @@ def calculate_predictions_custom_lrp(batch_idx, thr, original_image, class_index
     transformer_attribution = transformer_attribution.squeeze()
     transformer_attribution = (transformer_attribution - transformer_attribution.min()) / (transformer_attribution.max() - transformer_attribution.min())
     
+    transformer_attribution_copy = transformer_attribution.detach().cpu().numpy()
     
 
     image_copy = original_image.clone()
+    image_NP = image_copy.permute(1, 2, 0).detach().cpu().numpy()
+    vis = show_cam_on_image(image_NP, transformer_attribution_copy)
+    vis =  np.uint8(255 * vis)
+    vis = cv2.cvtColor(np.array(vis), cv2.COLOR_RGB2BGR)
+    plt.imsave(f"/content/The-Explainable-Transformer/testing_vis2/heatmap_{(args.variant).split('_')[0]}_{batch_idx}.png", vis)
 
     image_copy_tensor = image_copy.cuda()
 
@@ -243,12 +250,14 @@ def calculate_predictions_custom_lrp(batch_idx, thr, original_image, class_index
       print(_data_pred_pertubarted.shape)
 
       res =  (_data_pred_pertubarted_image.cpu().numpy() * 255).astype('uint8')
-      Image.fromarray(res, 'RGB').save(f'testing_vis2/img_b{batch_idx}_{i}.png')
+      if i >=1 and i<=2:
+         Image.fromarray(res, 'RGB').save(f'testing_vis2/img_{batch_idx}_{args.variant}_{i}.png')
+
       _data_pred_pertubarted               = _data_pred_pertubarted.reshape(*org_shape)
 
       _norm_data_pred_pertubarted            = normalize(_data_pred_pertubarted.unsqueeze(0))
  
-      out_data_pred_pertubarted              = model(_norm_data_pred_pertubarted)
+      out_data_pred_pertubarted              = model(_norm_data_pred_pertubarted).detach()
 
       prob_pert                    = torch.softmax(out_data_pred_pertubarted, dim=1)
       pred_prob_pert_init_class    = prob_pert[0,class_pred_idx]
@@ -402,17 +411,39 @@ if __name__ == "__main__":
       
      count+=1
      
+  #final_res = {}
+  #if args.mode ==  'test_saco':
+  #   for num in SACO_SAMPLES:
+  #    F = compute_SaCo(mapper,num)
+  #    final_res[str(num)] = F
+  #   update_json(f"testing/res_{args.variant}.json", 
+  #          final_res)
+
+
   final_res = {}
   if args.mode ==  'test_saco':
+     count = 0
+     count_pos = 0
+     F_tot = 0
+     F_tot_pos = 0
+     #for num in mapper:
      for num in SACO_SAMPLES:
       F = compute_SaCo(mapper,num)
+      count +=1
+      F_tot+=F
+
+      if F>0:
+         F_tot_pos+=F
+         count_pos+=1
+
       final_res[str(num)] = F
      update_json(f"testing/res_{args.variant}.json", 
             final_res)
-     print(F)
-
-
-
+     update_json(f"testing/res_{args.variant}.json", 
+            {'F': f"{F_tot / count }"})
+     update_json(f"testing/res_{args.variant}.json", 
+            {'F_pos': f"{F_tot_pos / count_pos }"})
+   
 
 
 

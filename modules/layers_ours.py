@@ -448,12 +448,14 @@ class Linear(nn.Linear, RelProp):
           layer.to(self.weight.device)
           with torch.no_grad():
               layer.weight.copy_(self.weight)
-              layer.bias.copy_(self.bias)
+              if self.bias is not None:
+                layer.bias.copy_(self.bias)
           
           rule = Gamma(0.25)
           handles = rule.register(layer)
           output = layer(self.X)
           attribution, = torch.autograd.grad(output, self.X, grad_outputs=R)
+          handles.remove()
           return attribution
         
         if epsilon_rule:
@@ -549,12 +551,15 @@ class WeightNormLinear(Linear):
         layer.to(self.weight.device)
         with torch.no_grad():
             layer.weight.copy_(self.weight)
-            layer.bias.copy_(self.bias)
+            if self.bias is not None:
+                layer.bias.copy_(self.bias)
           
         rule = Gamma(0.25)
         handles = rule.register(layer)
         output = layer(self.X)
         attribution, = torch.autograd.grad(output, self.X, grad_outputs=R)
+        handles.remove()
+
         return attribution
 
     if epsilon_rule:
@@ -627,7 +632,8 @@ class Conv2d(nn.Conv2d, RelProp):
         layer.to(self.weight.device)
         with torch.no_grad():
             layer.weight.copy_(self.weight)
-            layer.bias.copy_(self.bias)
+            if self.bias is not None:
+                layer.bias.copy_(self.bias)
         rule = Gamma(0.25)
         handles = rule.register(layer)
         output = layer(self.X)

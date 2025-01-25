@@ -10,26 +10,24 @@ import numpy as np
 def parse_args():
     parser = argparse.ArgumentParser(description='evaluate perturbations')
     
-    parser.add_argument('--mode', required=True, choices = ['segmentations', 'analyze', 'analyze_comparison'])
+    parser.add_argument('--mode', required=True, choices = ['perturbations', 'analyze'])
  
 
     parser.add_argument('--gen-latex', action='store_true')
-    parser.add_argument('--threshold-type', choices = ['mean', 'otsu', 'MoV'], required = True)
+    parser.add_argument('--num-steps', default = 10 , type=int, help="")
+    parser.add_argument('--data-set', default='IMNET', choices=['IMNET100','CIFAR', 'IMNET', 'INAT', 'INAT19'],)
+
     parser.add_argument('--variant', default = 'basic',  type=str, help="")
   
-
-    parser.add_argument('--check-all', action='store_true')
-    parser.add_argument('--analyze-all-lrp', action='store_true')
-
- 
+    parser.add_argument('--fract', type=float,
+                        default=0.1,
+                        help='')
     parser.add_argument('--data-path', type=str,
                   
                         help='')
-    parser.add_argument('--batch-size', type=int,
-                        default=1,
-                        help='')
+    parser.add_argument('--check-all', action='store_true')
 
-    parser.add_argument('--data-set', default='IMNET', choices=['IMNET100','CIFAR', 'IMNET', 'INAT', 'INAT19'],)
+
     
     parser.add_argument('--num-workers', type=int,
                         default= 1,
@@ -41,13 +39,10 @@ def parse_args():
                         help='')
 
  
-
-    parser.add_argument('--imagenet-seg-path', type=str, default = "gtsegs_ijcv.mat",help='')
     args = parser.parse_args()
     return args
 
 
-ALL_LRP_SUBDIRS = ['lrp', 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full' ]
 
 
 
@@ -88,7 +83,6 @@ MAPPER_HELPER = {
    'custom_lrp_gamma_rule_default_op': r'(semi-$\gamma$-rule)',
    'custom_lrp_gamma_rule_full': r'($\gamma$-rule)',
    'lrp': r'($\alpha\beta$-rule)',
-   'detach': r'($\alpha\beta$-rule)',
 
 
 }
@@ -112,8 +106,8 @@ def gen_latex_table(global_top_mapper,args):
 
       row = variant
       row += f' & {pixAcc:.3f}'
-      row += f' & {100*mAP:.3f}'
-      row += f' & {100* mIoU:.3f}'
+      row += f' & {mAP:.3f}'
+      row += f' & {mIoU:.3f}'
       row += f' & {mBG_I:.3f}'
       row += f' & {mFG_I:.3f}'
       
@@ -128,7 +122,21 @@ def gen_latex_table(global_top_mapper,args):
 
 
 
+d = {
+       
+        #BATCH 1
 
+        'attn_act_relu_no_cp': [80,88],
+        'basic':          [0],
+        
+        #BATCH 3
+        'variant_diff_attn_relu': [155],
+        'variant_layer_scale': [43],
+        'attn_act_relu_pos': [145],
+
+        'variant_more_attn_relu': [265],
+        'variant_layer_scale_relu_attn': [100], #BATCH1
+    }
    
    
 
@@ -136,15 +144,18 @@ def gen_latex_table(global_top_mapper,args):
 TEMPORARY! based on current accuarcy results
 '''
 def filter_epochs(args, epoch, variant):
-   return epoch in args.epochs_to_segmentation[variant]
+   return epoch in args.epochs_to_perturbate[variant]
 
 
 
-def run_segmentations_env(args):
-   choices = args.epochs_to_segmentation.keys()
+def run_perturbations_env(args):
+   choices = args.epochs_to_perturbate.keys()
+   methods = ["custom_lrp", 'custom_lrp_gamma_rule_default_op', 'custom_lrp_gamma_rule_full']
    for c in choices:
-      args.variant = c
-      run_segmentation(args)
+      for method in methods:
+        args.method = method
+        args.variant = c
+        run_perturbation(args)
   
 
 
@@ -173,19 +184,20 @@ def get_sorted_checkpoints(directory):
     return [f'{directory}/{relative_path}'  for _, relative_path in checkpoints]
 
 
-def run_segmentation(args):
-    eval_seg_cmd        = "python evaluate_segmentation.py"
+def run_perturbation(args):
+    eval_pert_cmd        = "python run_pert_saco.py"
    
     
-    eval_seg_cmd       +=  f' --method {args.method}'
-    eval_seg_cmd       +=  f' --imagenet-seg-path {args.imagenet_seg_path}'
-  
+    eval_pert_cmd       +=  f' --method {args.method}'
 
+  
     root_dir = f"{args.dirs['finetuned_models_dir']}{args.data_set}"
     
     variant          = f'{args.variant}'
-    eval_seg_cmd += f' --variant {args.variant}'
-    eval_seg_cmd += f' --threshold-type {args.threshold_type} '
+    eval_pert_cmd += f' --variant {args.variant}'
+    eval_pert_cmd += f' --fract {args.fract} '
+    eval_pert_cmd += f' --num-steps {args.num_steps} '
+
    
   
 
@@ -193,7 +205,6 @@ def run_segmentation(args):
 
     checkpoints =  get_sorted_checkpoints(model_dir)
 
-    suff = (args.method).split("_")[-1] if len(args.method) <26 else args.method
 
     for c in checkpoints:
      
@@ -202,12 +213,10 @@ def run_segmentation(args):
        if filter_epochs(args, int(epoch), variant ) == False:
           continue
        print(f"working on epoch {epoch}")
-       seg_results_dir = 'seg_results' if args.threshold_type == 'mean' else f'seg_results_{args.threshold_type}'
-       eval_seg_epoch_cmd = f"{eval_seg_cmd} --output-dir {model_dir}/{seg_results_dir}/res_{epoch}_{suff}"
-       eval_seg_epoch_cmd += f" --custom-trained-model {model_dir}/{checkpoint_path}" 
-       print(f'executing: {eval_seg_epoch_cmd}')
+       eval_pert_cmd += f" --custom-trained-model {model_dir}/{checkpoint_path}" 
+       print(f'executing: {eval_pert_cmd}')
        try:
-          subprocess.run(eval_seg_epoch_cmd, check=True, shell=True)
+          subprocess.run(eval_pert_cmd, check=True, shell=True)
           print(f"generated visualizations")
        except subprocess.CalledProcessError as e:
           print(f"Error: {e}")
@@ -217,33 +226,7 @@ def run_segmentation(args):
 
 
 def parse_seg_results(seg_results_path, method,variant, analyze_all_lrp = False):
-    suffixLst = [method.split("_")[-1] if len(args.method) <26 else args.method]
-    if analyze_all_lrp:
-       suffixLst = [elem for elem in ALL_LRP_SUBDIRS]
-    
-    lst = []
-    
-    for res_dir in os.listdir(seg_results_path):
-        for suffix in suffixLst:
-         if res_dir.endswith(suffix) == False:
-            continue
-            
-           
-           
-         epoch = int(res_dir.split('_')[1])
-
-
-
-         seg_results_file = f'{seg_results_path}/{res_dir}/seg_results.json'
-         with open(seg_results_file, 'r') as f:
-             seg_data = json.load(f)
-             mIoU =  seg_data.get(f'mIoU',0)
-             pixAcc =  seg_data.get(f'Pixel Accuracy',0)
-             mBG_I =  seg_data.get(f'mean_bg_intersection',0)
-             mFG_I =  seg_data.get(f'mean_fg_intersection',0)
-             mAP   =  seg_data.get(f'mAP',0)
-             lst.append((variant ,epoch,float(pixAcc), float(mAP), float(mIoU), float(mBG_I),float(mFG_I), suffix ))
-    return lst
+    pass
 
 
 
@@ -256,76 +239,86 @@ def parse_subdir(subdir):
    return exp_name
 
 
+
+def parse_filename(filename):
+    all_methods = ['custom_lrp', 'custom_lrp_gamma_rule_full', 'custom_lrp_gamma_rule_default_op' ]
+
+    # Strip the extension if it has one
+    base_name = filename.rsplit('.', 1)[0]
+    
+    # Initialize a list to store the parsed parts
+    parsed_parts = []
+
+    # Start processing the filename from the end
+    parts = base_name.split('_') # Reverse the parts to start from the end
+
+    num_steps = parts[-1]
+    parts = parts[:-1]
+    method  = parts[-1]
+    parts = parts[:-1]
+    while method not in all_methods:
+       method = parts[-1]+"_" +method
+       parts = parts[:-1]
+    variant = parts[-1]
+    parts = parts[:-1]
+    while len(parts) != 1:
+       variant = parts[-1]+"_" +variant
+       parts = parts[:-1]
+    return variant, method, num_steps
+
+
+
+
+def parse_test_results(filepath):
+    
+    with open(filepath, 'r') as f:
+             data = json.load(f)
+             F =  data.get(f'F',0)
+             F_pos = data.get(f'F_pos',0)
+
+             F = float(F)
+             F_pos  = float(F_pos)
+            
+    return F, F_pos
+
+
 def analyze(args):
-   choices  =  args.epochs_to_segmentation.keys() 
-   root_dir = f"{args.dirs['finetuned_models_dir']}{args.data_set}"
-
-   global_lst = []
-   seg_results_dir = 'seg_results' if args.threshold_type == 'mean' else f'seg_results_{args.threshold_type}'
-
-
-   for c in choices:
-       subdir = f'{root_dir}/{c}/{seg_results_dir}'    
-       global_lst += parse_seg_results(subdir, args.method,c, analyze_all_lrp=args.analyze_all_lrp)
+   mapper = {}
+   for filename in os.listdir("testing/"):
+      if filename.startswith("res"):
+        full_path = f"testing/{filename}"
+        variant, method, num_steps = parse_filename(filename)
+        F, F_pos = parse_test_results(full_path)
+        if num_steps not in mapper:
+           mapper[num_steps] = []
+           mapper[num_steps].append((variant, method, F,F_pos, num_steps))
     
-
-   global_lst.sort(reverse=True, key=lambda x: x[4]) #mIOU
-
-   print("oredered by mIOU")
-   for elem in global_lst:
-      variant,epoch,pixAcc, mAP, mIoU, mBG_I,mFG_I, suffix = elem
-      print(f"variant: {variant} | e: {epoch} | mIoU: {mIoU} | pixAcc: {pixAcc} | mAP: {mAP}")
-   
-   
-   if args.gen_latex:
-      gen_latex_table(global_lst,args)
-
-
-
-def analyze_comparison(args):
-    filepath = "testing/seg_results_compare.json"
-    # Read the JSON file
-    with open(filepath, 'r') as file:
-       data = json.load(file)
-    x_values = [0, 0.2, 0.4, 0.6, 0.8]
-    d_res  = {}
-    # Loop through the first-level keys (groups)
-    for variant, epochs_dict in data.items():
-     for epoch, experiments in epochs_dict.items():
-        for experiment_name, values in experiments.items(): 
-         if experiment_name not in d_res:
-             d_res[experiment_name]  ={}
-         d_res[experiment_name][f'{variant}_{epoch}'] = values
-                # Create a plot for each experiment
+   for k in mapper:
+      mapper[k].sort(reverse=True, key=lambda x: x[2])
+      seen_variant = set()
+      for row in mapper[k]:
+         variant, method, F, F_pos, num_steps = row
+         if variant in seen_variant:
+            continue
+         else:
+            seen_variant.add(variant)
+         print(f"VARIANT: {variant} | method: {method} | F: {F} | F_pos: {F_pos} | STEPS: {num_steps}")
+      print("\n\n")
     
-     for experiment, results in d_res.items():
-         plt.figure(figsize=(10, 6))
-         plt.title(f"Experiment: {experiment}")
-         for test, values  in results.items():
-            plt.plot(x_values,values, label=test)
-            plt.xlabel('eps')
-            plt.ylabel('score')
-            plt.legend()
-         plt.savefig(f'testing/{experiment}.png')
-         plt.close()  
-
         
 
 
    
 if __name__ == "__main__":
     args                   = parse_args()
-    config.get_config(args, skip_further_testing = True, get_epochs_to_segmentation = True)
-    
-    if args.mode == 'analyze_comparison':
-       analyze_comparison(args)
-    
-      
-    elif args.mode == "segmentations":
+    config.get_config(args, skip_further_testing = True)
+    args.epochs_to_perturbate = d
+  
+    if args.mode == "perturbations":
        if args.check_all:
-          run_segmentations_env(args)
+          run_perturbations_env(args)
        else: 
-         run_segmentation(args)
+         run_perturbation(args)
     else:
        analyze(args)
     
